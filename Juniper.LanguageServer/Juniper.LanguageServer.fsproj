@@ -1,0 +1,26 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net6.0</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="JuniperCompiler.fs" />
+    <Compile Include="Program.fs" />
+  </ItemGroup>
+
+  <ItemGroup />
+
+  <ItemGroup>
+    <PackageReference Include="GuiLabs.Language.Xml" Version="1.2.60" />
+    <PackageReference Include="OmniSharp.Abstractions" Version="1.39.6" />
+    <PackageReference Include="OmniSharp.Extensions.LanguageServer" Version="0.19.7" />
+    <PackageReference Include="OmniSharp.Shared" Version="1.39.6" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Juniper\Juniper.fsproj" />
+  </ItemGroup>
+
+</Project>

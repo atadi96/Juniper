@@ -5,6 +5,8 @@ VisualStudioVersion = 17.0.31912.275
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Juniper", "Juniper\Juniper.fsproj", "{5889A703-6FEC-475D-96C1-B40B980F26EA}"
 EndProject
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Juniper.LanguageServer", "Juniper.LanguageServer\Juniper.LanguageServer.fsproj", "{20EB9482-D92F-480A-A80D-85F67CE21293}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -15,6 +17,10 @@ Global
 		{5889A703-6FEC-475D-96C1-B40B980F26EA}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{5889A703-6FEC-475D-96C1-B40B980F26EA}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{5889A703-6FEC-475D-96C1-B40B980F26EA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{20EB9482-D92F-480A-A80D-85F67CE21293}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{20EB9482-D92F-480A-A80D-85F67CE21293}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{20EB9482-D92F-480A-A80D-85F67CE21293}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{20EB9482-D92F-480A-A80D-85F67CE21293}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
