@@ -57,7 +57,7 @@ let rec typeof ((posE, e) : Ast.PosAdorn<Ast.Expr>)
                 ((posp, tau, T.MatchUnit), T.unittype =~= (tau, errStr [posu] "Unit pattern does not match the type of the expression."))
             | Ast.MatchVar { varName=(posv, varName); mutable_=(posm, mutable_); typ=typ } ->
                 if Set.contains varName localVars then
-                    raise <| TypeError ((errStr [posv] (sprintf "This pattern already contains a variable named %s." varName)).Force())
+                    raise <| TypeError' (errStr [posv] (sprintf "This pattern already contains a variable named %s." varName))
                 else
                     localVars <- Set.add varName localVars
                     let (c', retTau) =
@@ -88,13 +88,13 @@ let rec typeof ((posE, e) : Ast.PosAdorn<Ast.Expr>)
                     match decref with
                     | Choice1Of2 name ->
                         if Set.contains name localVars then
-                            raise <| TypeError ((errStr [posn] (sprintf "%s is a local variable and not a value constructor." name)).Force())
+                            raise <| TypeError' (errStr [posn] (sprintf "%s is a local variable and not a value constructor." name))
                         else
                             match Map.tryFind name menv with
                             | Some (mod_, name') ->
                                 {T.ModQualifierRec.module_ = mod_; T.ModQualifierRec.name=name'}
                             | None ->
-                                raise <| TypeError ((errStr [posn] (sprintf "Unable to find value constructor named %s." name)).Force())
+                                raise <| TypeError' (errStr [posn] (sprintf "Unable to find value constructor named %s." name))
                     | Choice2Of2 {module_ = mod_; name=name} ->
                         {T.ModQualifierRec.module_=Ast.unwrap mod_; T.ModQualifierRec.name=Ast.unwrap name}
                 let {T.ModQualifierRec.module_=module_; T.ModQualifierRec.name=name} = modQual
@@ -123,11 +123,11 @@ let rec typeof ((posE, e) : Ast.PosAdorn<Ast.Expr>)
                             let c' = c &&& (conjoinConstraints cs)
                             ((posp, tau, T.MatchValCon {modQualifier=modQual; innerPattern=innerPattern''; id = id}), c')
                         else
-                            raise <| TypeError ((errStr [posi] (sprintf "Value constructor named %s takes %d arguments, but there were %d inner patterns." name (List.length argTaus) (List.length innerPattern))).Force())
+                            raise <| TypeError' (errStr [posi] (sprintf "Value constructor named %s takes %d arguments, but there were %d inner patterns." name (List.length argTaus) (List.length innerPattern)))
                     | _ ->
-                        raise <| TypeError ((errStr [posn] (sprintf "Found declaration named %s, but it wasn't a value constructor." name)).Force())
+                        raise <| TypeError' (errStr [posn] (sprintf "Found declaration named %s, but it wasn't a value constructor." name))
                 | _ ->
-                    raise <| TypeError ((errStr [posn] (sprintf "Unable to find value constructor named %s" name)).Force())
+                    raise <| TypeError' (errStr [posn] (sprintf "Unable to find value constructor named %s" name))
         let (pattern', c) = checkPattern' (posp, p) tau
         (pattern', c, localVars, gamma')
             
@@ -197,7 +197,7 @@ let rec typeof ((posE, e) : Ast.PosAdorn<Ast.Expr>)
                     | _ ->
                         nonfunVar
             | None ->
-                raise <| TypeError ((errStr [posn] (sprintf "Variable named %s could not be found" varName)).Force())
+                raise <| TypeError' (errStr [posn] (sprintf "Variable named %s could not be found" varName))
         | Ast.ArrayAccessExp { array=(posa, _) as array; index=(posi, _) as index } ->
             let (exprs', c) = typesof [array; index] dtenv menv localVars gamma
             let [array'; index'] = exprs'
@@ -229,7 +229,7 @@ let rec typeof ((posE, e) : Ast.PosAdorn<Ast.Expr>)
                         (None, Trivial)
                 adorn posE typ' (T.ArrayMakeExp {typ=typ'; initializer=maybeInitializer'}) c
             | _ ->
-                raise <| TypeError ((errStr [post] "Type declaration should be an array type").Force())
+                raise <| TypeError' (errStr [post] "Type declaration should be an array type")
         | Ast.AssignExp {left=(posl, left); right=(posr, _) as right; ref=(posref, ref)} ->
             let rec checkLeft left =
                 let ((_, taul, left'), c) =
@@ -241,11 +241,11 @@ let rec typeof ((posE, e) : Ast.PosAdorn<Ast.Expr>)
                                 // TODO: Update this if we decide to make module level values mutable
                                 adorn posl tau (T.ModQualifierMutation {module_=module_; name=name}) Trivial
                             else
-                                raise <| TypeError ((errStr [posmq] "Top level let declarations are not mutable. Did you mean to use 'set ref' instead?").Force())
+                                raise <| TypeError' (errStr [posmq] "Top level let declarations are not mutable. Did you mean to use 'set ref' instead?")
                         | Some _ ->
-                            raise <| TypeError ((errStr [posn] (sprintf "Found a declaration named %s in module %s, but it was not a let declaration." name module_)).Force())
+                            raise <| TypeError' (errStr [posn] (sprintf "Found a declaration named %s in module %s, but it was not a let declaration." name module_))
                         | None ->
-                            raise <| TypeError ((errStr [posmq] (sprintf "Unable to find a let declaration named %s in module %s." name module_)).Force())
+                            raise <| TypeError' (errStr [posmq] (sprintf "Unable to find a let declaration named %s in module %s." name module_))
                     | Ast.ArrayMutation {array=(posa, array); index=(posi, _) as index} ->
                         let elementTau = freshtyvar ()
                         let capVar = freshcapvar ()
@@ -268,9 +268,9 @@ let rec typeof ((posE, e) : Ast.PosAdorn<Ast.Expr>)
                                 let interfaceConstraints' = interfaceConstraints |> List.map (fun (conTau, con) -> InterfaceConstraint (conTau, con, err)) |> conjoinConstraints
                                 adorn posl tau (T.VarMutation name) interfaceConstraints'
                             else
-                                raise <| TypeError ((errStr [posn] (sprintf "The variable named %s is not mutable." name)).Force())
+                                raise <| TypeError' (errStr [posn] (sprintf "The variable named %s is not mutable." name))
                         | None ->
-                            raise <| TypeError ((errStr [posn] (sprintf "Unable to find variable named %s in the current scope." name)).Force())
+                            raise <| TypeError' (errStr [posn] (sprintf "Unable to find variable named %s in the current scope." name))
                 let (rettau, c') =
                     if ref then
                         let tau = freshtyvar ()
@@ -288,7 +288,7 @@ let rec typeof ((posE, e) : Ast.PosAdorn<Ast.Expr>)
             | A.CallExp {func=func; args=(posa, args)} ->
                 ty (posr, A.CallExp {func=func; args=(posa, args @ [left])})
             | _ ->
-                raise <| TypeError ((errStr [posr] "The right hand side of the pipe operator must be a function call expression").Force())
+                raise <| TypeError' (errStr [posr] "The right hand side of the pipe operator must be a function call expression")
         | Ast.BinaryOpExp {left=(posl, _) as left; op=(poso, op); right=(posr, _) as right} ->
             let op' =
                 match op with
@@ -381,7 +381,7 @@ let rec typeof ((posE, e) : Ast.PosAdorn<Ast.Expr>)
                 let c' = List.fold (&&&) Trivial ((c1 &&& c3)::c2)
                 adorn posE firstClauseTau (T.CaseExp {on=on'; clauses=clauses'}) c'
             | _ ->
-                raise <| TypeError ((errStr [posc] "No clauses were found in the case statement").Force())
+                raise <| TypeError' (errStr [posc] "No clauses were found in the case statement")
         | Ast.DoWhileLoopExp {condition=(posc, _) as condition; body=(posb, _) as body} ->
             let (body', c1) = ty body
             let (condition', c2) = ty condition
@@ -417,7 +417,7 @@ let rec typeof ((posE, e) : Ast.PosAdorn<Ast.Expr>)
         | Ast.LambdaExp (posf, {returnTy=maybeReturnTy; arguments=(posargs, arguments); body=(posb, _) as body; interfaceConstraints=(posi, interfaceConstraints)}) ->
             match interfaceConstraints with
             | [] -> ()
-            | _ -> raise <| SemanticError ((errStr [posi] "Interface constraints are not supported for lambdas").Force())
+            | _ -> raise <| SemanticError' (errStr [posi] "Interface constraints are not supported for lambdas")
             let gamma' = gamma |> Map.map (fun varName (_, scheme) -> (false, scheme)) // Mark all variables as non-mutable within the lambda
             let (gamma1Lst, c1s, localVars1, arguments') =
                 arguments |>
@@ -479,11 +479,11 @@ let rec typeof ((posE, e) : Ast.PosAdorn<Ast.Expr>)
                 | Some (T.LetDecTy tau) ->
                     ((tau, []), [], [])
                 | Some (T.AliasDecTy _) ->
-                    raise <| TypeError ((errStr [posmq] (sprintf "Found declaration named %s in module %s, but it was a alias type declaration and not a value declaration." name module_)).Force())
+                    raise <| TypeError' (errStr [posmq] (sprintf "Found declaration named %s in module %s, but it was a alias type declaration and not a value declaration." name module_))
                 | Some (T.UnionDecTy _) ->
-                    raise <| TypeError ((errStr [posmq] (sprintf "Found declaration named %s in module %s, but it was an algebraic datatype declaration and not a value declaration." name module_)).Force())
+                    raise <| TypeError' (errStr [posmq] (sprintf "Found declaration named %s in module %s, but it was an algebraic datatype declaration and not a value declaration." name module_))
                 | None ->
-                    raise <| TypeError ((errStr [posmq] (sprintf "Unable to find declaration named %s in module %s." name module_)).Force())
+                    raise <| TypeError' (errStr [posmq] (sprintf "Unable to find declaration named %s in module %s." name module_))
             let err = errStr [posmq] "The template arguments to the function do not satisfy the interface constraints."
             let interfaceConstraints' = interfaceConstraints |> List.map (fun (conTau, con) -> InterfaceConstraint (conTau, con, err)) |> conjoinConstraints
             adorn posE instance (T.ModQualifierExp ({module_=module_; name=name}, t, c)) interfaceConstraints'
@@ -584,26 +584,26 @@ let rec typeof ((posE, e) : Ast.PosAdorn<Ast.Expr>)
                     | Some (_, scheme) ->
                         (Choice1Of2 name, scheme)  
                     | None ->
-                        raise <| TypeError ((errStr [posf] (sprintf "Unable to find function named '%s' in the current scope." name)).Force())
+                        raise <| TypeError' (errStr [posf] (sprintf "Unable to find function named '%s' in the current scope." name))
                 | Choice2Of2 {module_=(posm, module_); name=(posn, name)} ->
                     match Map.tryFind (module_, name) dtenv with
                     | Some (T.FunDecTy scheme) ->
                         (Choice2Of2 ({module_=module_; name=name} : T.ModQualifierRec), scheme)
                     | Some _ ->
-                        raise <| TypeError ((errStr [posf] (sprintf "Found declaration named '%s' in module '%s', but it was not a function declaration." name module_)).Force())
+                        raise <| TypeError' (errStr [posf] (sprintf "Found declaration named '%s' in module '%s', but it was not a function declaration." name module_))
                     | None ->
-                        raise <| TypeError ((errStr [posf] (sprintf "Unable to find declaration named '%s' in module '%s'" name module_)).Force())
+                        raise <| TypeError' (errStr [posf] (sprintf "Unable to find declaration named '%s' in module '%s'" name module_))
             let templateArgs' = List.map convertType' tyExprs
             let templateArgsCaps' = List.map (Ast.unwrap >> convertCapacity') capExprs
             let (Forall (quantifiedTys, quantifiedCaps, _, _)) = scheme
             if List.length templateArgs' = List.length quantifiedTys then
                 ()
             else
-                raise <| TypeError ((errStr [postyexprs] (sprintf "Invalid number of template type arguments. Expected %d arguments but received %d." (List.length quantifiedTys) (List.length templateArgs'))).Force())
+                raise <| TypeError' (errStr [postyexprs] (sprintf "Invalid number of template type arguments. Expected %d arguments but received %d." (List.length quantifiedTys) (List.length templateArgs')))
             if List.length templateArgsCaps' = List.length quantifiedCaps then
                 ()
             else
-                raise <| TypeError ((errStr [posc] (sprintf "Invalid number of template capacity arguments. Expected %d arguments but received %d." (List.length quantifiedCaps) (List.length templateArgsCaps'))).Force())
+                raise <| TypeError' (errStr [posc] (sprintf "Invalid number of template capacity arguments. Expected %d arguments but received %d." (List.length quantifiedCaps) (List.length templateArgsCaps')))
             let (tau, interfaceConstraints) = instantiate scheme templateArgs' templateArgsCaps'
             let err = errStr [post] "The template arguments to the function do not satisfy the interface constraints."
             let interfaceConstraints' = interfaceConstraints |> List.map (fun (conTau, con) -> InterfaceConstraint (conTau, con, err)) |> conjoinConstraints
@@ -803,7 +803,7 @@ let typecheckProgram (program : Ast.Module list) (fnames : string list) =
                 if Map.containsKey reference denv then
                     valueGraph.AddEdge(new QuikGraph.Edge<string*string>((module_, name), reference)) |> ignore
                 else
-                    raise <| TypeError ((errStr [pos] (sprintf "Reference made to %s:%s which could not be found" (fst reference) (snd reference))).Force())
+                    raise <| TypeError' (errStr [pos] (sprintf "Reference made to %s:%s which could not be found" (fst reference) (snd reference)))
             )
         )
     )
@@ -828,7 +828,7 @@ let typecheckProgram (program : Ast.Module list) (fnames : string list) =
                 if Map.containsKey reference dtenv0 then
                     typeGraph.AddEdge(new QuikGraph.Edge<string*string>((module_, name), reference)) |> ignore
                 else
-                    raise <| TypeError ((errStr [pos] (sprintf "Reference made to %s:%s which could not be found" (fst reference) (snd reference))).Force()))))
+                    raise <| TypeError' (errStr [pos] (sprintf "Reference made to %s:%s which could not be found" (fst reference) (snd reference))))))
     
     let typeDependencyOrder =
         // Ensure that there are no circular type dependencies
@@ -919,9 +919,10 @@ let typecheckProgram (program : Ast.Module list) (fnames : string list) =
             | _ ->
                 scc |> List.iter
                     (fun decref ->
-                        if isLet (Ast.unwrap (Map.find decref denv)) then
+                        let (pos, possibleLet) = Map.find decref denv
+                        if isLet possibleLet then
                             let (module_, name) = decref
-                            raise <| TypeError (sprintf "Semantic error: The let named '%s' in module '%s' has a self reference. The following declarations form an unresolvable dependency cycle: %s" name module_ sccStr)
+                            raise <| TypeError' (errStr [pos] (sprintf "Semantic error: The let named '%s' in module '%s' has a self reference. The following declarations form an unresolvable dependency cycle: %s" name module_ sccStr))
                         else
                             ()))
     
@@ -977,14 +978,14 @@ let typecheckProgram (program : Ast.Module list) (fnames : string list) =
                     | T.Forall ([], [], _, _) ->
                         ()
                     | _ ->
-                        raise <| TypeError ((errStr [posl] (sprintf "Let declaration was inferred to have the following type scheme:\n\n%s\n\nTop level let declarations do not support values of polymorphic type. Once the Arduino IDE turns on C++14 by default this may change (variable templates). In the meantime, consider either removing the polymorphism, add a type annotation, or wrap your variable in a function." (schemeString elabtau))).Force())
+                        raise <| TypeError' (errStr [posl] (sprintf "Let declaration was inferred to have the following type scheme:\n\n%s\n\nTop level let declarations do not support values of polymorphic type. Once the Arduino IDE turns on C++14 by default this may change (variable templates). In the meantime, consider either removing the polymorphism, add a type annotation, or wrap your variable in a function." (schemeString elabtau)))
                     match AstAnalysis.findFreeVars theta kappa right' with
                     | ([], []) ->
                         ()
                     | ((badPos, _)::_, _) ->
-                        raise <| TypeError ((errStr [badPos] "Too much polymorphism! The following expression has a type that was detected to contain a type variable. Consider adding a type constraint to fix the source of this problem").Force())
+                        raise <| TypeError' (errStr [badPos] "Too much polymorphism! The following expression has a type that was detected to contain a type variable. Consider adding a type constraint to fix the source of this problem")
                     | (_, (badPos, _)::_) ->
-                        raise <| TypeError ((errStr [badPos] "Too much polymorphism! The following expression has a capacity that was detected to contain a capacity variable. Consider adding a type constraint to fix the source of this problem").Force())
+                        raise <| TypeError' (errStr [badPos] "Too much polymorphism! The following expression has a capacity that was detected to contain a capacity variable. Consider adding a type constraint to fix the source of this problem")
                     let globalGamma' = Map.add modqual elabtau globalGamma
                     let dtenv' = Map.add modqual (T.LetDecTy tau) dtenv
                     let let' = T.LetDec {varName=name; typ=tau; right=right'}
@@ -1012,7 +1013,7 @@ let typecheckProgram (program : Ast.Module list) (fnames : string list) =
                                 if Set.count localArguments = List.length arguments then
                                     ()
                                 else
-                                    raise <| TypeError ((errStr [posa] "There are duplicate argument names").Force())
+                                    raise <| TypeError' (errStr [posa] "There are duplicate argument names")
                                 let (tyVarMapping, capVarMapping, maybeTemplate', capVarNames, localCapacities) =
                                     match template with
                                     | None -> (Map.empty, Map.empty, None, [], Set.empty)
@@ -1095,13 +1096,13 @@ let typecheckProgram (program : Ast.Module list) (fnames : string list) =
                                             | T.TyVar tyvar' ->
                                                 tyvar'
                                             | x ->
-                                                raise <| TypeError ((errStr [post] (sprintf "The type parameter was inferred to be equivalent to the non-type variable '%s'" (T.typeString x))).Force()))
+                                                raise <| TypeError' (errStr [post] (sprintf "The type parameter was inferred to be equivalent to the non-type variable '%s'" (T.typeString x))))
                                         let capVars' = List.zip capVars capVarsPos |> List.map (fun (capvar, posc) ->
                                             match simplifyCap (capsubst kappa (T.CapacityVar capvar)) with
                                             | T.CapacityVar capvar' ->
                                                 capvar'
                                             | x ->
-                                                raise <| TypeError ((errStr [posc] (sprintf "The capacity parameter was inferred to be equivalent to the non-capacity variable '%s'" (T.capacityString x))).Force()))   
+                                                raise <| TypeError' (errStr [posc] (sprintf "The capacity parameter was inferred to be equivalent to the non-capacity variable '%s'" (T.capacityString x))))   
                                         (tyVars', capVars', Some ({tyVars=tyVars'; capVars=capVars'} : T.Template), Some originalTyVars, Some originalCapVars)
                                 // Now expand the set of type variables to account for interface field constraints
                                 // this process is roughly equivalent to deriving functional dependency rules for record
@@ -1149,18 +1150,21 @@ let typecheckProgram (program : Ast.Module list) (fnames : string list) =
                                 | [] -> ()
                                 | badFreeVar::_ ->
                                     let (_, errMsg)::_ = Map.find badFreeVar interfaceConstraints
-                                    raise <| TypeError (sprintf "Too much polymorphism! A polymorphic interface constraint was detected containing a type variable that would not be reified by fixing either the argument types or return types. Consider adding a type constraint to fix the source of this problem.\n\n%s" (errMsg.Force()))
+                                    errMsg
+                                    |> ErrorMessage.mapMsg (sprintf "Too much polymorphism! A polymorphic interface constraint was detected containing a type variable that would not be reified by fixing either the argument types or return types. Consider adding a type constraint to fix the source of this problem.\n\n%s")
+                                    |> TypeError'
+                                    |> raise
                                 let (freeTyVarsInBody, freeCapVarsInBody) = AstAnalysis.findFreeVars theta kappa body'
                                 match Set.difference (List.map A.unwrap freeTyVarsInBody |> Set.ofList) funDepsTs' |> List.ofSeq with
                                 | [] -> ()
                                 | badFreeVar::_ ->
                                     let (pos, _) = List.find (fun freeVar -> (A.unwrap freeVar) = badFreeVar) freeTyVarsInBody
-                                    raise <| TypeError ((errStr [pos] "Too much polymorphism! The following expression has a type that was detected to contain a type variable that would not be reified by fixing either the argument types or return types. Consider adding a type constraint to fix the source of this problem").Force())
+                                    raise <| TypeError' (errStr [pos] "Too much polymorphism! The following expression has a type that was detected to contain a type variable that would not be reified by fixing either the argument types or return types. Consider adding a type constraint to fix the source of this problem")
                                 match Set.difference (List.map A.unwrap freeCapVarsInBody |> Set.ofList) funDepsCs' |> List.ofSeq with
                                 | [] -> ()
                                 | badFreeVar::_ ->
                                     let (pos, _) = List.find (fun freeVar -> (A.unwrap freeVar) = badFreeVar) freeCapVarsInBody
-                                    raise <| TypeError ((errStr [pos] "Too much polymorphism! The following expression has a capacity that was detected to contain a capacity variable that would not be reified by fixing either the argument types or return types. Consider adding a type constraint to fix the source of this problem").Force())
+                                    raise <| TypeError' (errStr [pos] "Too much polymorphism! The following expression has a capacity that was detected to contain a capacity variable that would not be reified by fixing either the argument types or return types. Consider adding a type constraint to fix the source of this problem")
                                 let relevantInterfaceConstraints =
                                     t |>
                                     List.map

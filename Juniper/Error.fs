@@ -2,7 +2,23 @@
 open FParsec
 open System.IO
 
-exception TypeError of string
+type ErrorMessage =
+    {
+        positions: (Position * Position) list
+        message: string
+        errStr: string Lazy
+    }
+
+module ErrorMessage =
+    let mapMsg fn { positions = pos; message = msg; errStr = errStr  } =
+        {
+            positions = pos
+            message = fn msg
+            errStr = lazy(fn (errStr.Force()))
+        }
+
+exception TypeError' of ErrorMessage
+exception SemanticError' of ErrorMessage
 exception SemanticError of string
 
 // Get position of the error (starting line and column, end line and column) in the form of a string to be used
@@ -44,4 +60,9 @@ let posString (p1 : Position, p2' : Position) : string =
             ""
     sprintf "file %s, line %d column %d to line %d column %d%s" p1.StreamName (p1l + 1L) p1c (p2l + 1L) p2c badCode
 
-let errStr pos err = lazy(sprintf "%s\n\n%s" (List.map posString pos |> String.concat "\n\n") err)
+let errStr pos err =
+    {
+        positions = pos
+        message = err
+        errStr = lazy(sprintf "%s\n\n%s" (List.map posString pos |> String.concat "\n\n") err)
+    }

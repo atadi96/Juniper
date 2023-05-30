@@ -11,21 +11,22 @@ open Symbolism.SimplifyLogical
 // described in the book Programming Languages: Build, Prove, and Compare
 
 exception TypeError of string
+exception TypeErrorMessage of Error.ErrorMessage
 
-type ErrorMessage = Lazy<string>
+type ErrorMessage = Error.ErrorMessage
 
-type InterfaceConstraint = TyExpr * ConstraintType * ErrorMessage
+type InterfaceConstraint = TyExpr * ConstraintType * Error.ErrorMessage
 
-type Constraint = Equal of TyExpr * TyExpr * ErrorMessage
+type Constraint = Equal of TyExpr * TyExpr * Error.ErrorMessage
                 | And of Constraint * Constraint
                 | InterfaceConstraint of InterfaceConstraint
                 | Trivial
 
-type ConstraintCap = EqualCap of CapacityExpr * CapacityExpr * ErrorMessage
+type ConstraintCap = EqualCap of CapacityExpr * CapacityExpr * Error.ErrorMessage
                    | AndCap of ConstraintCap * ConstraintCap
                    | TrivialCap
 
-let (=~=) t1 (t2, err) =
+let (=~=) t1 (t2, err: Error.ErrorMessage) =
     //printfn "%s =~= %s" (typeString t1) (typeString t2)
     Equal (t1, t2, err)
 
@@ -533,7 +534,7 @@ let solveCap (con : ConstraintCap) (terminalCaps : string list) : Map<string, Ca
     varSymbols |>
     List.fold
         (fun (env, symbolsSolvedSoFar) sym ->
-            let relevantErrors = lazy (relevantEquations sym.name |> List.map (fun (EqualCap (left, right, err)) -> err.Force()) |> String.concat "\n\n")
+            let relevantErrors = lazy (relevantEquations sym.name |> List.map (fun (EqualCap (left, right, err)) -> err.errStr.Force()) |> String.concat "\n\n")
             // Todo: try catch for EliminateVariables and IsolateVariable
             try
                 let eliminatedSystem = symbolismEq.EliminateVariables(symbolsSolvedSoFar |> Array.ofList)
@@ -613,17 +614,19 @@ let rec solve (con : Constraint) (terminalCaps : string list) : Map<string, TyEx
                         let (theta2, capCon2, intConst2) = solveTheta (consubst theta1 Map.empty right)
                         (composeTheta theta2 theta1, AndCap (capCon1, capCon2), List.append intConst1 intConst2)
                     | Equal (tau, tau', err) ->
-                        let failMsg = lazy (sprintf "Type error: The types %s and %s are not equal.\n\n%s" (typeString tau) (typeString tau') (err.Force()))
+                        let failMsg =
+                            err
+                            |> Error.ErrorMessage.mapMsg (sprintf "Type error: The types %s and %s are not equal.\n\n%s" (typeString tau) (typeString tau'))
                         match (tau, tau') with
                         | ((TyVar a, tau) | (tau, TyVar a)) ->
                             match solveTyvarEq a tau with
                             | Some answer -> (answer, TrivialCap, [])
-                            | None -> raise <| TypeError (failMsg.Force())
+                            | None -> raise <| Error.TypeError' (failMsg)
                         | (TyCon mu, TyCon mu') ->
                             if eqType tau tau' then
                                 (idSubst, TrivialCap, [])
                             else
-                                raise <| TypeError (failMsg.Force())
+                                raise <| Error.TypeError' (failMsg)
                         | (ConApp (t, ts, cs), ConApp(t', ts', cs')) ->
                             if List.length ts = List.length ts' && List.length cs = List.length cs' then
                                 let eqAnd c t t' = And (Equal (t, t', err), c)
@@ -632,18 +635,18 @@ let rec solve (con : Constraint) (terminalCaps : string list) : Map<string, TyEx
                                 let capCon2 = List.fold2 eqAndCap TrivialCap cs cs'
                                 (theta, AndCap (capCon1, capCon2), intConst)
                             else
-                                raise <| TypeError (failMsg.Force())
+                                raise <| Error.TypeError' (failMsg)
                         | (RecordTy (packed, fields), RecordTy (packed', fields')) ->
                             match (packed, packed') with
                             | (Some orderedFields, Some orderedFields') ->
                                 if orderedFields = orderedFields' then
                                     ()
                                 else
-                                    raise <| TypeError (failMsg.Force())
+                                    raise <| Error.TypeError' (failMsg)
                             | (None, None) ->
                                 ()
                             | _ ->
-                                raise <| TypeError (failMsg.Force())
+                                raise <| Error.TypeError' (failMsg)
                             if Map.keys fields = Map.keys fields' then
                                 let fieldNames = Map.keys fields |> List.ofSeq
                                 let getTaus fs = fieldNames |> List.map (fun fieldName -> Map.find fieldName fs)
@@ -652,7 +655,7 @@ let rec solve (con : Constraint) (terminalCaps : string list) : Map<string, TyEx
                                 let fieldConstraints = List.zip ts ts' |> List.map (fun (tau, tau') -> Equal (tau, tau', err)) |> conjoinConstraints
                                 solveTheta fieldConstraints
                             else
-                                raise <| TypeError (failMsg.Force())
+                                raise <| Error.TypeError' (failMsg)
                         | (ClosureTy fields, ClosureTy fields') ->
                             if Map.keys fields = Map.keys fields' then
                                 let fieldNames = Map.keys fields |> List.ofSeq
@@ -662,8 +665,8 @@ let rec solve (con : Constraint) (terminalCaps : string list) : Map<string, TyEx
                                 let fieldConstraints = List.zip ts ts' |> List.map (fun (tau, tau') -> Equal (tau, tau', err)) |> conjoinConstraints
                                 solveTheta fieldConstraints
                             else
-                                raise <| TypeError (failMsg.Force())
-                        | _ -> raise <| TypeError (failMsg.Force())
+                                raise <| Error.TypeError' (failMsg)
+                        | _ -> raise <| Error.TypeError' (failMsg)
                     | InterfaceConstraint constr ->
                         (idSubst, TrivialCap, [constr])
                 solveTheta con'
@@ -672,7 +675,9 @@ let rec solve (con : Constraint) (terminalCaps : string list) : Map<string, TyEx
                 List.map
                     (fun (tau, constraintType, failMsg) ->
                         let tau' = tycapsubst thetaSolution Map.empty tau
-                        let failMsg' = lazy (sprintf "Interface constraint error: The type %s does not satisfy the %s constraint.\n\n%s" (typeString tau') (interfaceConstraintString constraintType) (failMsg.Force()))
+                        let failMsg' =
+                            failMsg
+                            |> Error.ErrorMessage.mapMsg (sprintf "Interface constraint error: The type %s does not satisfy the %s constraint.\n\n%s" (typeString tau') (interfaceConstraintString constraintType))
                         match tau' with
                         | TyVar v ->
                             let constraintType' =
@@ -695,12 +700,12 @@ let rec solve (con : Constraint) (terminalCaps : string list) : Map<string, TyEx
                                     match Map.tryFind fieldName fields with
                                     | Some recordFieldTau ->
                                         let fieldTau' = tycapsubst thetaSolution Map.empty fieldTau
-                                        (None, Some (recordFieldTau =~= (fieldTau', lazy (sprintf "Record interface constraint error: The concrete type of the field named %s does not match the type of the constraint.\n\n%s" fieldName (failMsg.Force())))))
+                                        (None, Some (recordFieldTau =~= (fieldTau', failMsg |> Error.ErrorMessage.mapMsg (sprintf "Record interface constraint error: The concrete type of the field named %s does not match the type of the constraint.\n\n%s" fieldName))))
                                     | None ->
-                                        raise <| TypeError (sprintf "Record interface constraint error: The concrete record type %s does not contain a field named %s, as required by the record interface constraint.\n\n%s" (typeString tau') fieldName (failMsg.Force()))
+                                        raise <| Error.TypeError' (failMsg |> Error.ErrorMessage.mapMsg (sprintf "Record interface constraint error: The concrete record type %s does not contain a field named %s, as required by the record interface constraint.\n\n%s" (typeString tau') fieldName))
                                 | _ ->
-                                    raise <| TypeError (sprintf "Record interface constraint error: The concrete type was determined to be %s, which is not a record. However there is a field constraint, requiring that this type has a field with name %s.\n\n%s" (typeString tau') fieldName (failMsg.Force()))
-                            | _ -> raise <| TypeError (failMsg'.Force())) |>
+                                    raise <| Error.TypeError' (failMsg |> Error.ErrorMessage.mapMsg (sprintf "Record interface constraint error: The concrete type was determined to be %s, which is not a record. However there is a field constraint, requiring that this type has a field with name %s.\n\n%s" (typeString tau') fieldName))
+                            | _ -> raise <| Error.TypeError' (failMsg')) |>
                 List.unzip
             let extraInterfaceConstraints' = extraInterfaceConstraints |> List.filter Option.isSome |> List.map Option.get |> conjoinConstraints
             let interfaceConstraintsSolution' = interfaceConstraintsSolution |> List.filter Option.isSome |> List.map Option.get |> Map.ofListDuplicateKeys
@@ -726,7 +731,10 @@ let rec solve (con : Constraint) (terminalCaps : string list) : Map<string, TyEx
                                 taus |>
                                 List.map
                                     (fun (t', errMsg') ->
-                                        (t =~= (t', lazy (sprintf "Contradictory record field constraint for field name %s\n\n%s\n\n%s" fieldName (errMsg.Force()) (errMsg'.Force()))))))) |>
+                                        let errMsg'' =
+                                            errMsg'
+                                            |> Error.ErrorMessage.mapMsg (sprintf "Contradictory record field constraint for field name %s\n\n%s\n\n%s" fieldName (errMsg.errStr.Force()))
+                                        (t =~= (t', errMsg''))))) |>
                 Seq.concat |> // Flatten the constraints generated per type variable
                 Seq.concat |> // Flatten the constraints generated per field
                 List.ofSeq |>

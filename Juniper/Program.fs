@@ -85,7 +85,10 @@ let main argv =
                 System.IO.File.WriteAllText (outputFile, compiledProgram)
                 0
             with
-                | (Error.TypeError err | Error.SemanticError err | SyntaxError err | Constraint.TypeError err) ->
+                | (Error.TypeError' err | Error.SemanticError' err) ->
+                    printfn "%s" (err.errStr.Force())
+                    1
+                | (SyntaxError err | Constraint.TypeError err) ->
                     printfn "%s" err
                     1
                 | :? System.IO.FileNotFoundException as ex ->
