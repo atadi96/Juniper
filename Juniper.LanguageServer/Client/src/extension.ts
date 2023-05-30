@@ -17,8 +17,8 @@ export function activate(context: ExtensionContext) {
     // If the extension is launched in debug mode then the debug server options are used
     // Otherwise the run options are used
     let serverOptions: ServerOptions = {
-        run: { command: serverExe, args: ['C:\\Users\\atadi\\source\\repos\\Juniper\\Juniper-master\\Juniper.LanguageServer\\bin\\Debug\\net6.0\\Juniper.LanguageServer.dll'] },
-        debug: { command: serverExe, args: ['C:\\Users\\atadi\\source\\repos\\Juniper\\Juniper-master\\Juniper.LanguageServer\\bin\\Debug\\net6.0\\Juniper.LanguageServer.dll'] }
+        run: { command: serverExe, args: ['C:\\Users\\atadi\\source\\repos\\Juniper\\juniper-repo\\Juniper.LanguageServer\\bin\\Debug\\net6.0\\Juniper.LanguageServer.dll'] },
+        debug: { command: serverExe, args: ['C:\\Users\\atadi\\source\\repos\\Juniper\\juniper-repo\\Juniper.LanguageServer\\bin\\Debug\\net6.0\\Juniper.LanguageServer.dll'] }
     }
 
     // Options to control the language client
