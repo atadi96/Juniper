@@ -616,7 +616,7 @@ let rec solve (con : Constraint) (terminalCaps : string list) : Map<string, TyEx
                     | Equal (tau, tau', err) ->
                         let failMsg =
                             err
-                            |> Error.ErrorMessage.mapMsg (sprintf "Type error: The types %s and %s are not equal.\n\n%s" (typeString tau) (typeString tau'))
+                            |> Error.ErrorMessage.mapMsg (fun errMsg -> sprintf "Type error: The types %s and %s are not equal.\n\n%s" (typeString tau) (typeString tau') errMsg)
                         match (tau, tau') with
                         | ((TyVar a, tau) | (tau, TyVar a)) ->
                             match solveTyvarEq a tau with
@@ -677,7 +677,7 @@ let rec solve (con : Constraint) (terminalCaps : string list) : Map<string, TyEx
                         let tau' = tycapsubst thetaSolution Map.empty tau
                         let failMsg' =
                             failMsg
-                            |> Error.ErrorMessage.mapMsg (sprintf "Interface constraint error: The type %s does not satisfy the %s constraint.\n\n%s" (typeString tau') (interfaceConstraintString constraintType))
+                            |> Error.ErrorMessage.mapMsg (fun msg -> sprintf "Interface constraint error: The type %s does not satisfy the %s constraint.\n\n%s" (typeString tau') (interfaceConstraintString constraintType) msg)
                         match tau' with
                         | TyVar v ->
                             let constraintType' =
@@ -700,11 +700,11 @@ let rec solve (con : Constraint) (terminalCaps : string list) : Map<string, TyEx
                                     match Map.tryFind fieldName fields with
                                     | Some recordFieldTau ->
                                         let fieldTau' = tycapsubst thetaSolution Map.empty fieldTau
-                                        (None, Some (recordFieldTau =~= (fieldTau', failMsg |> Error.ErrorMessage.mapMsg (sprintf "Record interface constraint error: The concrete type of the field named %s does not match the type of the constraint.\n\n%s" fieldName))))
+                                        (None, Some (recordFieldTau =~= (fieldTau', failMsg |> Error.ErrorMessage.mapMsg (fun msg -> sprintf "Record interface constraint error: The concrete type of the field named %s does not match the type of the constraint.\n\n%s" fieldName msg))))
                                     | None ->
-                                        raise <| Error.TypeError' (failMsg |> Error.ErrorMessage.mapMsg (sprintf "Record interface constraint error: The concrete record type %s does not contain a field named %s, as required by the record interface constraint.\n\n%s" (typeString tau') fieldName))
+                                        raise <| Error.TypeError' (failMsg |> Error.ErrorMessage.mapMsg (fun msg -> sprintf "Record interface constraint error: The concrete record type %s does not contain a field named %s, as required by the record interface constraint.\n\n%s" (typeString tau') fieldName msg))
                                 | _ ->
-                                    raise <| Error.TypeError' (failMsg |> Error.ErrorMessage.mapMsg (sprintf "Record interface constraint error: The concrete type was determined to be %s, which is not a record. However there is a field constraint, requiring that this type has a field with name %s.\n\n%s" (typeString tau') fieldName))
+                                    raise <| Error.TypeError' (failMsg |> Error.ErrorMessage.mapMsg (fun msg -> sprintf "Record interface constraint error: The concrete type was determined to be %s, which is not a record. However there is a field constraint, requiring that this type has a field with name %s.\n\n%s" (typeString tau') fieldName msg))
                             | _ -> raise <| Error.TypeError' (failMsg')) |>
                 List.unzip
             let extraInterfaceConstraints' = extraInterfaceConstraints |> List.filter Option.isSome |> List.map Option.get |> conjoinConstraints
@@ -733,7 +733,7 @@ let rec solve (con : Constraint) (terminalCaps : string list) : Map<string, TyEx
                                     (fun (t', errMsg') ->
                                         let errMsg'' =
                                             errMsg'
-                                            |> Error.ErrorMessage.mapMsg (sprintf "Contradictory record field constraint for field name %s\n\n%s\n\n%s" fieldName (errMsg.errStr.Force()))
+                                            |> Error.ErrorMessage.mapMsg (fun msg -> sprintf "Contradictory record field constraint for field name %s\n\n%s\n\n%s" fieldName (errMsg.errStr.Force()) msg)
                                         (t =~= (t', errMsg''))))) |>
                 Seq.concat |> // Flatten the constraints generated per type variable
                 Seq.concat |> // Flatten the constraints generated per field

@@ -5,16 +5,14 @@ open System.IO
 type ErrorMessage =
     {
         positions: (Position * Position) list
-        message: string
         errStr: string Lazy
     }
 
 module ErrorMessage =
-    let mapMsg fn { positions = pos; message = msg; errStr = errStr  } =
+    let mapMsg fn { positions = pos; errStr = errStr  } =
         {
             positions = pos
-            message = fn msg
-            errStr = lazy(fn (errStr.Force()))
+            errStr = lazy (fn (errStr.Force()))
         }
 
 exception TypeError' of ErrorMessage
@@ -63,6 +61,5 @@ let posString (p1 : Position, p2' : Position) : string =
 let errStr pos err =
     {
         positions = pos
-        message = err
         errStr = lazy(sprintf "%s\n\n%s" (List.map posString pos |> String.concat "\n\n") err)
     }
