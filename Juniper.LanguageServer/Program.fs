@@ -7,6 +7,34 @@ open OmniSharp.Extensions.LanguageServer.Protocol.Client.Capabilities
 open OmniSharp.Extensions.LanguageServer.Protocol
 open OmniSharp.Extensions.LanguageServer.Protocol.Server.Capabilities
 
+type IStandardLibraryModules =
+    abstract GetStandardLibraryModules : unit -> (string * Ast.Module) list
+
+type Buffer =
+    {
+        text: string
+        lastAst: (Ast.Module * string) option
+        lastTypeCheck: (JuniperCompiler.TypeCheckedProgram * string) option
+        compilation: Compilation
+    }
+and Compilation =
+    | SyntaxError
+    | TypeError of Ast.Module
+    | Compiled of Ast.Module * JuniperCompiler.TypeCheckedProgram
+
+module Buffer =
+    let create text compilation =
+        let (ast, typeCheck) =
+            match compilation with
+            | SyntaxError -> None, None
+            | TypeError ast -> Some (ast, text), None
+            | Compiled (ast, typeCheck) -> Some (ast, text), Some (typeCheck, text)
+        {
+            text = text
+            lastAst = ast
+            lastTypeCheck = typeCheck
+            compilation = compilation
+        }
 
 // For more information see https://aka.ms/fsharp-console-apps
 type BufferManager() =
@@ -25,7 +53,7 @@ module RegistrationOptions =
         options.DocumentSelector <- documentSelector
         options
 
-type TextDocumentSyncHandler(router: ILanguageServerFacade, bufferManager: BufferManager) =
+type TextDocumentSyncHandler(router: ILanguageServerFacade, bufferManager: BufferManager, standardLibraryModules: IStandardLibraryModules) =
     let documentSelector =
         let docuFilter = DocumentFilter()
         docuFilter.Pattern <- "**/*.jun"
@@ -35,14 +63,16 @@ type TextDocumentSyncHandler(router: ILanguageServerFacade, bufferManager: Buffe
 
     let handle (uri: DocumentUri, version: Nullable<int>, text: string) =
         let documentPath = uri.ToString()
-        
-        bufferManager.UpdateBuffer(documentPath, StringBuffer(text)) |> ignore
 
-        let diagnostics =
+        let (compilation, diagnostics) =
             let fixPos (pos: FParsec.Position): Position =
                 let line = pos.Line |> int
                 let col = pos.Column |> int
                 Position(line - 1, col)
+            let fixPos' (pos: FParsec.Position): Position =
+                let line = pos.Line |> int
+                let col = pos.Column |> int
+                Position(line - 1, col - 1)
 
             match (documentPath, text) |> JuniperCompiler.syntaxCheck with
             | Error (startPosition, endPosition, message) ->
@@ -51,26 +81,30 @@ type TextDocumentSyncHandler(router: ILanguageServerFacade, bufferManager: Buffe
                 diag.Message <- message
                 diag.Range <- Range(startPosition |> fixPos, endPosition |> fixPos)
                 diag.Severity <- DiagnosticSeverity.Error
-                [ diag ]
+                SyntaxError, [ diag ]
                 
             | Ok ast ->
-                match (documentPath, ast) |> JuniperCompiler.typeCheck with
-                | Ok _ -> [ ]
+                match (documentPath, ast) |> JuniperCompiler.typeCheck (standardLibraryModules.GetStandardLibraryModules()) with
+                | Ok typeCheck -> Compiled (ast, typeCheck), [ ]
                 | Error (JuniperCompiler.ErrorMessage errMsg) ->
-                    errMsg.positions
-                    |> List.map (fun (startPosition, endPosition) ->
-                        let diag = Diagnostic()
-                        diag.Message <- errMsg.errStr.Force()
-                        diag.Range <- Range(startPosition |> fixPos, endPosition |> fixPos)
-                        diag.Severity <- DiagnosticSeverity.Error
-                        diag
-                    )
+                    let diags =
+                        errMsg.positions
+                        |> List.map (fun (startPosition, endPosition) ->
+                            let diag = Diagnostic()
+                            diag.Message <- errMsg.message.Force()
+                            diag.Range <- Range(startPosition |> fixPos', endPosition |> fixPos')
+                            diag.Severity <- DiagnosticSeverity.Error
+                            diag
+                        )
+                    TypeError ast, diags
                 | Error (JuniperCompiler.ErrorText errText) ->
                     let diag: Diagnostic = Diagnostic()
                     diag.Message <- errText
                     diag.Range <- Range(0, 0, 0, 1)
                     diag.Severity <- DiagnosticSeverity.Error
-                    [ diag ]
+                    TypeError ast, [ diag ]
+                    
+        bufferManager.UpdateBuffer(documentPath, Buffer.create text compilation) |> ignore
 
         let diagnosticParams = PublishDiagnosticsParams()
         diagnosticParams.Uri <- uri
@@ -125,6 +159,60 @@ type TextDocumentSyncHandler(router: ILanguageServerFacade, bufferManager: Buffe
 
             handle (request.TextDocument.Uri, Nullable<_>(), request.Text)
 
+type DocumentSymbolHandler(bufferManager: BufferManager) =
+    let rec whew = function
+        | Ast.LetDec { varName = ((p1,p2),_); right = right } ->
+            let pos (p: FParsec.Position) = Position((p.Line |> int) - 1, (p.Column |> int) - 1)
+            let symbol = DocumentSymbol()
+            symbol.Kind <- SymbolKind.Variable
+            symbol.Detail <- "helou"
+            symbol.Range <- Range(pos p1, pos p2)
+            Some symbol
+        | _ -> None
+    
+    interface IDocumentSymbolHandler with
+        member this.GetRegistrationOptions(capability: DocumentSymbolCapability, clientCapabilities: ClientCapabilities): DocumentSymbolRegistrationOptions = 
+            let registrationOptions = DocumentSymbolRegistrationOptions()
+            registrationOptions.DocumentSelector <-
+                let documentFilter = DocumentFilter()
+                documentFilter.Pattern <- "**/*.jun"
+                DocumentSelector(documentFilter)
+            registrationOptions
+
+        member this.Handle(request: DocumentSymbolParams, cancellationToken: Threading.CancellationToken): Threading.Tasks.Task<SymbolInformationOrDocumentSymbolContainer> = 
+            let documentPath = request.TextDocument.Uri.ToString()
+            let doc = bufferManager.GetBuffer(documentPath)
+            match doc with
+            | Some { lastAst = Some (Ast.Module declarationsPos, _) } ->
+                let symbols =
+                    declarationsPos
+                    |> Seq.map snd
+                    |> Seq.choose whew
+                    |> Seq.map SymbolInformationOrDocumentSymbol.Create
+                    |> Container.From
+                SymbolInformationOrDocumentSymbolContainer.From(symbols)
+                |> Threading.Tasks.Task.FromResult
+                
+            | _ -> Threading.Tasks.Task.FromResult(SymbolInformationOrDocumentSymbolContainer())
+
+type StandardLibraryModules(stdLibDirectory: string) =
+    let stdLibModules =
+        StandardLibrary.modules
+        |> Seq.map (sprintf "%s/%s.jun" stdLibDirectory)
+        |> Seq.map (fun fileName ->
+            fileName
+            |> System.IO.File.ReadAllText
+            |> fun file -> (fileName, file)
+            |> JuniperCompiler.syntaxCheck
+            |> function
+                | Ok ast -> (fileName, ast)
+                | _ -> failwith "Error: standard library does not compile!"
+        )
+        |> List.ofSeq
+
+    interface IStandardLibraryModules with
+        member this.GetStandardLibraryModules(): (string * Ast.Module) list = stdLibModules
+
 open Microsoft.Extensions.Logging
 open Microsoft.Extensions.DependencyInjection
 
@@ -132,6 +220,7 @@ let configureServices (services: IServiceCollection) =
     services
         .AddSingleton<BufferManager>()
         .AddSingleton<TextDocumentSyncHandler>()
+        .AddSingleton<IStandardLibraryModules>(StandardLibraryModules(@"C:\Users\atadi\source\repos\Juniper\juniper-repo\Juniper\junstd"))
     |> ignore
 
 let configureServer (options: OmniSharp.Extensions.LanguageServer.Server.LanguageServerOptions): unit =
@@ -143,6 +232,7 @@ let configureServer (options: OmniSharp.Extensions.LanguageServer.Server.Languag
         //.WithMinimumLogLevel()
         .WithServices(configureServices)
         .WithHandler<TextDocumentSyncHandler>()
+        .WithHandler<DocumentSymbolHandler>()
 
     |> ignore
 

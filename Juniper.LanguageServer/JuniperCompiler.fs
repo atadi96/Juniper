@@ -8,7 +8,20 @@ let syntaxCheck (uri: string, text: string): Result<_, (_ * Position option * _)
     | Success (result, _, _) ->
         Result.Ok (Ast.Module result)
     | Failure (errorMsg, parseError, _) ->
-        Result.Error (parseError.Position, None, errorMsg)
+        let errorMsg' = 
+            use stream = new System.IO.StringReader(errorMsg)
+            let mutable line = stream.ReadLine()
+            [
+                while line |> isNull |> not do
+                    yield line
+                    line <- stream.ReadLine()
+            ]
+            |> Seq.rev
+            |> Seq.skipWhile System.String.IsNullOrWhiteSpace
+            |> Seq.take 1
+            |> String.concat ""
+            
+        Result.Error (parseError.Position, None, errorMsg')
 
 type TypeCheckedProgram =
     {
@@ -37,8 +50,12 @@ type TypeCheckError =
 
 type Exception = System.Exception
 
-let typeCheck (uri: string, astModule: Ast.Module): Result<TypeCheckedProgram, TypeCheckError> =
+let typeCheck (standardLibraryModules: (string * Ast.Module) list) (uri: string, astModule: Ast.Module): Result<TypeCheckedProgram, TypeCheckError> =
     try
+        let modules = standardLibraryModules |> List.map snd
+        let fileNames = standardLibraryModules |> List.map fst
+        let (moduleNames, opens, includes, typeDecs, inlineCodeDecs, valueSccs) = TypeChecker.typecheckProgram (List.append modules [astModule]) (List.append fileNames [uri])
+
         let moduleDeclarations decs =
             decs
             |> List.map (fun (moduleName, decl) ->
@@ -46,7 +63,6 @@ let typeCheck (uri: string, astModule: Ast.Module): Result<TypeCheckedProgram, T
                     moduleName = moduleName
                     declaration = decl
                 })
-        let (moduleNames, opens, includes, typeDecs, inlineCodeDecs, valueSccs) = TypeChecker.typecheckProgram [astModule] [uri]
         {
             moduleNames =
                 moduleNames

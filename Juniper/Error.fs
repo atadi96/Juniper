@@ -5,13 +5,15 @@ open System.IO
 type ErrorMessage =
     {
         positions: (Position * Position) list
+        message: string Lazy
         errStr: string Lazy
     }
 
 module ErrorMessage =
-    let mapMsg fn { positions = pos; errStr = errStr  } =
+    let mapMsg fn { positions = pos; errStr = errStr; message = message  } =
         {
             positions = pos
+            message = lazy(fn (message.Force()))
             errStr = lazy (fn (errStr.Force()))
         }
 
@@ -61,5 +63,6 @@ let posString (p1 : Position, p2' : Position) : string =
 let errStr pos err =
     {
         positions = pos
+        message = lazy(err)
         errStr = lazy(sprintf "%s\n\n%s" (List.map posString pos |> String.concat "\n\n") err)
     }
