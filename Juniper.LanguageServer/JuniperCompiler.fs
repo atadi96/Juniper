@@ -44,6 +44,20 @@ and ValueScc =
         kappa: Map<string, CapacityExpr>
     }
 
+module TypeCheckedProgram =
+    let getModuleDeclarations (moduleName: string) (program: TypeCheckedProgram) =
+        [
+            program.typeDecs
+            program.valueSccs |> List.collect (fun scc -> scc.declarations)
+        ]
+        |> Seq.collect id
+        |> Seq.choose (fun moduleDeclaration ->
+            if moduleDeclaration.moduleName = moduleName then
+                Some moduleDeclaration.declaration
+            else
+                None
+        )
+
 type TypeCheckError =
     | ErrorMessage of Error.ErrorMessage
     | ErrorText of string

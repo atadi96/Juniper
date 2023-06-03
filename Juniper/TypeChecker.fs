@@ -483,7 +483,7 @@ let rec typeof ((posE, e) : Ast.PosAdorn<Ast.Expr>)
                 | Some (T.UnionDecTy _) ->
                     raise <| TypeError' (errStr [posmq] (sprintf "Found declaration named %s in module %s, but it was an algebraic datatype declaration and not a value declaration." name module_))
                 | None ->
-                    raise <| TypeError' (errStr [posmq] (sprintf "Unable to find declaration named %s in module %s." name module_))
+                    raise <| TypeError' (errStr [posmq] (sprintf "Unable to find declaration named %s in module %s." name module_) |> ErrorMessage.withData (DeclarationNotFoundInModule (posn, module_)))
             let err = errStr [posmq] "The template arguments to the function do not satisfy the interface constraints."
             let interfaceConstraints' = interfaceConstraints |> List.map (fun (conTau, con) -> InterfaceConstraint (conTau, con, err)) |> conjoinConstraints
             adorn posE instance (T.ModQualifierExp ({module_=module_; name=name}, t, c)) interfaceConstraints'
@@ -592,7 +592,7 @@ let rec typeof ((posE, e) : Ast.PosAdorn<Ast.Expr>)
                     | Some _ ->
                         raise <| TypeError' (errStr [posf] (sprintf "Found declaration named '%s' in module '%s', but it was not a function declaration." name module_))
                     | None ->
-                        raise <| TypeError' (errStr [posf] (sprintf "Unable to find declaration named '%s' in module '%s'" name module_))
+                        raise <| TypeError' (errStr [posf] (sprintf "Unable to find declaration named '%s' in module '%s'" name module_) |> ErrorMessage.withData (DeclarationNotFoundInModule (posn, module_)))
             let templateArgs' = List.map convertType' tyExprs
             let templateArgsCaps' = List.map (Ast.unwrap >> convertCapacity') capExprs
             let (Forall (quantifiedTys, quantifiedCaps, _, _)) = scheme

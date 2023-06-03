@@ -2,20 +2,27 @@
 open FParsec
 open System.IO
 
+type ErrorData =
+    | DeclarationNotFoundInModule of (Position * Position) * string
+
 type ErrorMessage =
     {
         positions: (Position * Position) list
         message: string Lazy
         errStr: string Lazy
+        errorData: ErrorData option
     }
 
 module ErrorMessage =
-    let mapMsg fn { positions = pos; errStr = errStr; message = message  } =
+    let mapMsg fn { positions = pos; errStr = errStr; message = message; errorData = errorData } =
         {
             positions = pos
             message = lazy(fn (message.Force()))
             errStr = lazy (fn (errStr.Force()))
+            errorData = errorData
         }
+    let withData data message =
+        { message with errorData = Some data }
 
 exception TypeError' of ErrorMessage
 exception SemanticError' of ErrorMessage
@@ -65,4 +72,5 @@ let errStr pos err =
         positions = pos
         message = lazy(err)
         errStr = lazy(sprintf "%s\n\n%s" (List.map posString pos |> String.concat "\n\n") err)
+        errorData = None
     }
