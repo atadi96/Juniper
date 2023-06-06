@@ -17,10 +17,44 @@ module RegistrationOptions =
         options.DocumentSelector <- documentSelector
         options
 
-type TextDocumentSyncHandler(router: ILanguageServerFacade, bufferManager: BufferManager, standardLibraryModules: IStandardLibraryModules) =
+type TextDocumentSyncHandler(router: ILanguageServerFacade, bufferManager: BufferManager, standardLibraryModules: IStandardLibraryModules, rootFolderService: IRootFolderService) =
     let documentSelector = Dependencies.junDocumentSelector
 
     let change = TextDocumentSyncKind.Full
+
+    let parseRootFolder (currentFile: DocumentUri) =
+        match rootFolderService.GetRootFolder() with
+        | None -> []
+        | Some rootFolder ->
+            let rootFolderPath = rootFolder.ToUri().AbsolutePath
+            let filePath = currentFile.ToUri().AbsolutePath
+
+            if filePath.StartsWith(rootFolderPath) then
+
+                System.IO.Directory.GetFiles(rootFolderPath, "*.jun", IO.SearchOption.AllDirectories)
+                |> Seq.map (fun path -> Uri(Uri("file://"), path))
+                |> Seq.filter (fun uri -> uri <> currentFile.ToUri())
+                |> Seq.map (fun uri ->
+                    let fileName = uri.AbsolutePath
+
+                    uri.ToString()
+                    |> bufferManager.GetBuffer
+                    |> Option.map(fun buffer -> buffer.text)
+                    |> Option.defaultWith (fun () ->
+                        fileName
+                        |> System.IO.File.ReadAllText
+                    )
+                    |> fun file -> uri.ToString(), file
+                    |> JuniperCompiler.syntaxCheck
+                    |> function
+                        | Ok ast -> Some (fileName, ast)
+                        | Error _ -> None
+                )
+                |> Seq.choose id
+                |> List.ofSeq
+            else
+                []
+        
 
     let handle (uri: DocumentUri, version: Nullable<int>, text: string) =
         let documentPath = uri.ToString()
@@ -45,7 +79,10 @@ type TextDocumentSyncHandler(router: ILanguageServerFacade, bufferManager: Buffe
                 SyntaxError, [ diag ]
                 
             | Ok ast ->
-                match (documentPath, ast) |> JuniperCompiler.typeCheck (standardLibraryModules.GetStandardLibraryModules()) with
+                let otherFiles =
+                    uri
+                    |> parseRootFolder
+                match ((documentPath, ast) :: otherFiles) |> JuniperCompiler.typeCheck (standardLibraryModules.GetStandardLibraryModules()) with
                 | Ok typeCheck -> Compiled (ast, typeCheck), [ ]
                 | Error (JuniperCompiler.ErrorMessage errMsg) ->
                     let diags =
@@ -95,6 +132,9 @@ type TextDocumentSyncHandler(router: ILanguageServerFacade, bufferManager: Buffe
         member this.GetRegistrationOptions(capability: SynchronizationCapability, clientCapabilities: ClientCapabilities): TextDocumentSaveRegistrationOptions =
             TextDocumentSaveRegistrationOptions()
             |> RegistrationOptions.setDocumentSelector documentSelector
+            |> fun options ->
+                options.IncludeText <- true
+                options
 
         member this.GetTextDocumentAttributes(uri: DocumentUri): TextDocumentAttributes =
             TextDocumentAttributes(uri, "juniper")
@@ -114,7 +154,8 @@ type TextDocumentSyncHandler(router: ILanguageServerFacade, bufferManager: Buffe
 
         member this.Handle(request: DidCloseTextDocumentParams, cancellationToken: Threading.CancellationToken): Threading.Tasks.Task<MediatR.Unit> = 
             
-            handle (request.TextDocument.Uri, Nullable<_>(), "")
+            bufferManager.RemoveBuffer(request.TextDocument.Uri.ToString())
+            MediatR.Unit.Task
 
         member this.Handle(request: DidSaveTextDocumentParams, cancellationToken: Threading.CancellationToken): Threading.Tasks.Task<MediatR.Unit> = 
 

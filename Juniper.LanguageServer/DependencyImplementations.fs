@@ -18,12 +18,7 @@ type StandardLibraryModules(stdLibDirectory: string) =
         |> List.ofSeq
 
     let compiledStdLib =
-        let (last, rest) =
-            stdLibModules
-            |> List.rev
-            |> function
-                | last :: rest -> last, (rest |> List.rev)
-        JuniperCompiler.typeCheck rest last
+        JuniperCompiler.typeCheck stdLibModules []
         |> function
             | Ok tc -> tc
             | _ -> failwith "Error: standard library does not compile!"
@@ -31,3 +26,14 @@ type StandardLibraryModules(stdLibDirectory: string) =
     interface IStandardLibraryModules with
         member __.GetTypeCheckedStandardLibrary(): JuniperCompiler.TypeCheckedProgram = compiledStdLib
         member __.GetStandardLibraryModules(): (string * Ast.Module) list = stdLibModules
+
+type RootFolderHolder() =
+    let mutable rootFolder = None
+
+    interface IRootFolderSetter with
+        member this.SetRootFolder(arg1: OmniSharp.Extensions.LanguageServer.Protocol.DocumentUri): unit = 
+            rootFolder <- Some arg1
+
+    interface IRootFolderService with
+        member this.GetRootFolder(): OmniSharp.Extensions.LanguageServer.Protocol.DocumentUri option = 
+            rootFolder

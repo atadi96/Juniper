@@ -166,8 +166,8 @@ type CompletionHandler(bufferManager: BufferManager, standardLibraryModules: ISt
 
             let defaultItem =
                 let item = CompletionItem()
-                item.Kind <- CompletionItemKind.Module
-                item.Label <- request.Position.ToString()
+                item.Kind <- CompletionItemKind.Function
+                item.Label <- ""
                 item
 
             match buffer with

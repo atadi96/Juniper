@@ -50,3 +50,11 @@ type BufferManager() =
                 |> Option.defaultValue false
             | None -> false
         )
+
+    member __.RemoveBuffer(documentPath: string) =
+        let mutable buffer : Buffer = Unchecked.defaultof<_>
+        match buffers.TryGetValue (documentPath, &buffer) with
+        | true ->
+            buffers.TryRemove(documentPath, &buffer)
+            |> ignore
+        | _ -> ()

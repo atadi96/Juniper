@@ -64,11 +64,11 @@ type TypeCheckError =
 
 type Exception = System.Exception
 
-let typeCheck (standardLibraryModules: (string * Ast.Module) list) (uri: string, astModule: Ast.Module): Result<TypeCheckedProgram, TypeCheckError> =
+let typeCheck (standardLibraryModules: (string * Ast.Module) list) (folderModules: (string * Ast.Module) list): Result<TypeCheckedProgram, TypeCheckError> =
     try
-        let modules = standardLibraryModules |> List.map snd
-        let fileNames = standardLibraryModules |> List.map fst
-        let (moduleNames, opens, includes, typeDecs, inlineCodeDecs, valueSccs) = TypeChecker.typecheckProgram (List.append modules [astModule]) (List.append fileNames [uri])
+        let modules = standardLibraryModules @ folderModules |> List.map snd
+        let fileNames = standardLibraryModules @ folderModules |> List.map fst
+        let (moduleNames, opens, includes, typeDecs, inlineCodeDecs, valueSccs) = TypeChecker.typecheckProgram modules fileNames
 
         let moduleDeclarations decs =
             decs
