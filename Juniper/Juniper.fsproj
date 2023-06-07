@@ -19,6 +19,7 @@
     <Compile Include="ConvertAst.fs" />
     <Compile Include="Module.fs" />
     <Compile Include="TypeChecker.fs" />
+    <Compile Include="StandardLibrary.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
 

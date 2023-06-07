@@ -41,11 +41,11 @@ let rec removeAliases (dtenv : Map<string * string, T.DeclarationTy>) (pos : FPa
         match Map.tryFind (module_, name) dtenv with
         | Some (T.AliasDecTy (tyVars, capVars, aliasTau)) ->
             if not (List.length tyVars = List.length argsTau) then
-                raise <| TypeError ((errStr [pos] (sprintf "Error when expanding the alias declaration %s:%s. The number of type arguments passed to the alias was %d, but the alias expected %d arguments." module_ name (List.length argsTau) (List.length tyVars))).Force())
+                raise <| TypeError' (errStr [pos] (sprintf "Error when expanding the alias declaration %s:%s. The number of type arguments passed to the alias was %d, but the alias expected %d arguments." module_ name (List.length argsTau) (List.length tyVars)))
             else
                 ()
             if not (List.length capVars = List.length argsCap) then
-                raise <| TypeError ((errStr [pos] (sprintf "Error when expanding the alias declaration %s:%s. The number of capacity arguments passed to the alias was %d, but the alias expected %d arguments." module_ name (List.length argsCap) (List.length capVars))).Force())
+                raise <| TypeError' (errStr [pos] (sprintf "Error when expanding the alias declaration %s:%s. The number of capacity arguments passed to the alias was %d, but the alias expected %d arguments." module_ name (List.length argsCap) (List.length capVars)))
             else
                 ()
             let typeBinding = Map.ofList (List.zip tyVars argsTau)
@@ -108,7 +108,7 @@ let convertType menv (dtenv : Map<string * string, T.DeclarationTy>) tyVarMappin
         | Ast.NameTy (pos, name) ->
             match Map.tryFind name menv with
             | Some (module_, name) -> T.TyCon <| T.ModuleQualifierTy {module_=module_; name=name}
-            | None -> raise (SemanticError ((errStr [pos] ("Unable to find type named " + name + " in the module environment")).Force()))
+            | None -> raise (SemanticError' (errStr [pos] ("Unable to find type named " + name + " in the module environment")))
         | Ast.ParensTy (_, tau) ->
             ct tau
         | Ast.RefTy (_, tau) ->

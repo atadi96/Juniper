@@ -56,7 +56,7 @@ let main argv =
             0
         | (Some sourceFiles, Some (outputFile::_), _) ->
             // List of includes of custom Juniper std library modules
-            let stdLibrary = ["Prelude"; "List"; "Signal"; "Io"; "Maybe"; "Time"; "Math"; "Button"; "Vector"; "CharList"; "StringM"; "Random"; "Color"]
+            let stdLibrary = StandardLibrary.modules
             let executingDir = System.IO.Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location);
             // Make the include modules names by prepending the executing directory and /junstd/, and appending the .jun file extension
             let stdFiles = stdLibrary |> List.map (fun name -> "junstd/" + name + ".jun")
@@ -85,7 +85,10 @@ let main argv =
                 System.IO.File.WriteAllText (outputFile, compiledProgram)
                 0
             with
-                | (Error.TypeError err | Error.SemanticError err | SyntaxError err | Constraint.TypeError err) ->
+                | (Error.TypeError' err | Error.SemanticError' err) ->
+                    printfn "%s" (err.errStr.Force())
+                    1
+                | (SyntaxError err | Constraint.TypeError err) ->
                     printfn "%s" err
                     1
                 | :? System.IO.FileNotFoundException as ex ->
