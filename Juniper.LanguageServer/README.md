@@ -7,6 +7,7 @@ Implemented Language Server functionalities:
 
 ## Try the VS Code Extension
 
+1. In `Program.fs` line 15, change the path to somewhere you have the Juniper stdlib files (for example `..\Juniper\junstd` from here)
 1. Build the project `Juniper.LanguageServer` with F# (`dotnet build`)
 1. Install npm
 2. Go to the `./Client` directory
