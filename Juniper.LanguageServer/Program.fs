@@ -28,6 +28,7 @@ let configureServer (options: OmniSharp.Extensions.LanguageServer.Server.Languag
         .WithHandler<TextDocumentSyncHandler>()
         //.WithHandler<DocumentSymbolHandler>()
         .WithHandler<CompletionHandler>()
+        .WithHandler<SemanticTokenHandler>()
         .OnInitialize(fun server request token ->
             let () =
                 request.WorkspaceFolders
@@ -47,9 +48,9 @@ let configureServer (options: OmniSharp.Extensions.LanguageServer.Server.Languag
 
 
 let runServer =
-    //System.Diagnostics.Debugger.Launch() |> ignore
-    //while not (System.Diagnostics.Debugger.IsAttached) do
-    //    System.Threading.Thread.Sleep(100)
+    System.Diagnostics.Debugger.Launch() |> ignore
+    while not (System.Diagnostics.Debugger.IsAttached) do
+        System.Threading.Thread.Sleep(100)
 
     task {
         let! server =

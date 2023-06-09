@@ -9,8 +9,10 @@
     <Compile Include="JuniperCompiler.fs" />
     <Compile Include="Dependencies.fs" />
     <Compile Include="Buffers.fs" />
+    <Compile Include="Tokenizer.fs" />
     <Compile Include="TextDocumentSyncHandler.fs" />
     <Compile Include="DocumentSymbolHandler.fs" />
+    <Compile Include="SemanticTokenHandler.fs" />
     <Compile Include="CompletionHandler.fs" />
     <Compile Include="DependencyImplementations.fs" />
     <Compile Include="Program.fs" />

@@ -6,7 +6,7 @@
 'use strict';
 
 import { workspace, Disposable, ExtensionContext } from 'vscode';
-import { LanguageClient, LanguageClientOptions, SettingMonitor, ServerOptions, TransportKind, InitializeParams } from 'vscode-languageclient';
+import { LanguageClient, LanguageClientOptions, SettingMonitor, ServerOptions, TransportKind, InitializeParams } from 'vscode-languageclient/node';
 import { Trace } from 'vscode-jsonrpc';
 
 export function activate(context: ExtensionContext) {
@@ -38,10 +38,11 @@ export function activate(context: ExtensionContext) {
 
     // Create the language client and start the client.
     const client = new LanguageClient('languageServerExampleJuniper', 'Juniper Language Server Example', serverOptions, clientOptions);
-    client.trace = Trace.Verbose;
+    client.registerProposedFeatures();
+    //client.trace = Trace.Verbose;
     let disposable = client.start();
 
     // Push the disposable to the context's subscriptions so that the
     // client can be deactivated on extension deactivation
-    context.subscriptions.push(disposable);
+    context.subscriptions.push({ dispose: function() {return disposable;}});
 }
