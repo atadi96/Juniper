@@ -158,7 +158,7 @@ let pos p : Parser<PosAdorn<'a>, 'b> = getPosition .>>. p .>>. getPosition |>> f
 
 let betweenChar left p right = skipChar left >>. ws >>. p .>> ws .>> skipChar right
 
-let id : Parser<string, unit> =
+let id<'a> : Parser<string, 'a> =
     let inRange (c : char) (low, high) =
         let i = int c
         low <= i && i <= high

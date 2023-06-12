@@ -44,6 +44,15 @@ let helpText =
 
 [<EntryPoint>]
 let main argv =
+
+    let mutable line = System.Console.ReadLine()
+    while true do
+        let syntaxTree = Parsing.Parser.Syntax.parse "<repl>" line
+        printfn "%A" syntaxTree
+        line <- System.Console.ReadLine()
+
+
+
     let argMap = parseArgs argv
     let maybeSourceFiles = getArg ["-s"; "--source"] argMap
     let maybeOutputFile = getArg ["-o"; "--output"] argMap
