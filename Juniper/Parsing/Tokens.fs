@@ -4,6 +4,10 @@ type TokenValue =
     //| StringValue of string
     | IntValue of int64
 
+type Keyword =
+    | ModuleKeyword
+    | OpenKeyword
+
 type TokenKind =
     | BadToken
     | EndOfFileToken
@@ -13,6 +17,7 @@ type TokenKind =
     | SlashToken
     | OpenParenthesisToken
     | CloseParenthesisToken
+    | KeywordToken of Keyword
     (*| PipeToken
     | BitwiseOrToken
     | BitwiseXorToken
@@ -35,14 +40,14 @@ type TokenKind =
     | ColonToken
     | SemicolonToken
     | UnsafeTypeCastToken
-    | CommaToken
     | ApostropheToken
     | InlineCppToken
     | ArrowToken
     | DoubleArrowToken
     | StringLiteralToken*)
+    | CommaToken
     | IntLiteralToken
-    //| IdentifierToken
+    | IdentifierToken
 
 type Token =
     {

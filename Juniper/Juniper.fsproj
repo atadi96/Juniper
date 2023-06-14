@@ -17,6 +17,7 @@
     <Compile Include="Compiler.fs" />
     <Compile Include="Parse.fs" />
 	<Compile Include="Parsing/Tokens.fs" />
+	<Compile Include="Parsing\SyntaxFacts.fs" />
 	<Compile Include="Parsing/Lexer.fs" />
 	<Compile Include="Parsing/Parser.fs" />
     <Compile Include="ConvertAst.fs" />

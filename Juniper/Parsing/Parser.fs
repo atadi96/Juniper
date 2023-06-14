@@ -5,6 +5,28 @@ open Lexer
 
 type ParseError = FParsec.Position * FParsec.Position * string
 
+type SeparatedSyntaxList<'TItem> =
+    | EmptySyntaxList
+    | SeparatedSyntaxList of 'TItem * (Token * 'TItem) list
+
+type ModuleDefinitionSyntax =
+    {
+        moduleName: ModuleNameSyntax
+        openModules: OpenModulesSyntax option
+    }
+and ModuleNameSyntax =
+    {
+        moduleKeyword: Token
+        moduleNameIdentifier: Token
+    }
+and OpenModulesSyntax =
+    {
+        openKeyword: Token
+        openParenthesis: Token
+        openedModuleNameIdentifiers: SeparatedSyntaxList<Token>
+        closeParenthesis: Token
+    }
+
 type SyntaxNode =
     | ExpressionSyntax of ExpressionSyntax
 
@@ -18,7 +40,7 @@ type SyntaxTree =
     {
         lexErrors : (FParsec.Position * string) list
         parseErrors: ParseError list
-        expression: ExpressionSyntax
+        expression: ModuleDefinitionSyntax
         eofToken: Token
     }
 
@@ -84,6 +106,53 @@ module Syntax =
         current
         |> bind (fun x -> ret x.tokenKind)
             
+            
+    let manySep (item: Parser<_>) (sepToken) (closeToken): Parser<SeparatedSyntaxList<_>> =
+        let rec nextItemParser (lexer: Lexer,parserState : ParserState) = 
+            sepItemParser (lexer,parserState)
+        and sepItemParser =
+            par {
+                let! currentTokenKind = currentKind
+                if currentTokenKind = sepToken then
+                    let! sepToken = nextToken
+                    let! currentItem = item
+                    let! rest = nextItemParser
+                    return (sepToken, currentItem) :: rest
+                else
+                    return []
+            }
+        par {
+            let! currentTokenKind = currentKind
+            if currentTokenKind = closeToken then
+                return EmptySyntaxList
+            else
+                let! firstItem = item
+                let! sepItems = nextItemParser
+                return SeparatedSyntaxList (firstItem, sepItems)
+        }
+
+    let manyWhile (cond: Parser<bool>) (body: Parser<_>) =
+        let rec inner x =
+            par {
+                let! condResult = cond
+                if condResult then
+                    let! current = body
+                    let! rest = inner x
+                    return current :: rest
+                else
+                    return []
+            }
+        inner
+
+    let ifCurrentKind peekKind parser =
+        par {
+            let! kind = currentKind
+            if kind = peekKind then
+                let! parsed = parser
+                return Some parsed
+            else
+                return None
+        }
 
     let rec primaryExpression : Parser<ExpressionSyntax> =
         par {
@@ -122,12 +191,46 @@ module Syntax =
                 | _ -> return left
             }
         factor |> bind termRight
+    and parseModuleName : Parser<ModuleNameSyntax> =
+        par {
+            let! moduleKeyword = matchToken (KeywordToken ModuleKeyword)
+            let! moduleName = matchToken (IdentifierToken)
+            return {
+                moduleKeyword = moduleKeyword
+                moduleNameIdentifier = moduleName
+            }
+        }
+    and parseOpenModules : Parser<OpenModulesSyntax> =
+        par {
+            let! openKeyword = matchToken (KeywordToken OpenKeyword)
+            let! openParenthesis = matchToken OpenParenthesisToken
+            let! moduleNames = manySep (matchToken IdentifierToken) CommaToken CloseParenthesisToken
+            let! closeParenthesis = matchToken CloseParenthesisToken
+            return {
+                openKeyword = openKeyword
+                openParenthesis = openParenthesis
+                openedModuleNameIdentifiers = moduleNames
+                closeParenthesis = closeParenthesis
+            }
+        }
+    and parseModuleDefinition =
+        par {
+            let! moduleName = parseModuleName
+            let! openModules =
+                parseOpenModules
+                |> ifCurrentKind (KeywordToken OpenKeyword)
+            return {
+                moduleName = moduleName
+                openModules = openModules
+            }
+        }
     and syntaxTree : Parser<SyntaxTree> =
         par {
-            let! expr = expression
+            //let! expr = expression
+            let! module_ = parseModuleDefinition
             let! eofToken = matchToken TokenKind.EndOfFileToken
             let! (parseErrors, lexErrors) = errors
-            return { lexErrors = lexErrors; parseErrors = parseErrors; expression = expr; eofToken = eofToken }
+            return { lexErrors = lexErrors; parseErrors = parseErrors; expression = module_; eofToken = eofToken }
         }
 
     let parse streamName text =

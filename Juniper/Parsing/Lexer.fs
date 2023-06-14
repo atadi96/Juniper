@@ -25,7 +25,7 @@ module private Lexer =
          | BadTokenData of char
          //| InlineCppTokenData of string
          //| StringLiteralTokenData of string
-         //| IdentifierTokenData of string
+         | IdentifierTokenData of string
 
     let badToken : Parser<TokenData> =
          fun stream ->
@@ -41,6 +41,13 @@ module private Lexer =
         let escapedChar = pstring "\\" >>. (anyOf "\\#" |>> string)
         between (pstring "#") (pstring "#") ((stringsSepBy normalCharSnippet escapedChar))
     *)
+
+    let private getKeywordOrIdentifierTokenData (text: string) =
+        text
+        |> SyntaxFacts.getKeyword
+        |> Option.map (KeywordToken >> TokenKind)
+        |> Option.defaultValue (IdentifierTokenData text)
+
     let tokenData : Parser<TokenData> =
         choice
           [
@@ -55,7 +62,11 @@ module private Lexer =
             skipChar '(' >>% TokenKind OpenParenthesisToken
             skipChar ')' >>% TokenKind CloseParenthesisToken
 
+            skipChar ',' >>% TokenKind CommaToken
+
             followedBy digit >>. pint64 |>> IntLiteralTokenData
+
+            followedBy (asciiLetter <|> pchar '_') >>. Parse.id |>> getKeywordOrIdentifierTokenData
             (*
             skipChar '+' >>% TokenKind PlusToken
             skipChar '-' >>. (skipChar '>' >>% TokenKind ArrowToken <|> preturn (TokenKind MinusToken))
@@ -86,7 +97,7 @@ module private Lexer =
     let tokenArgsFromData = function
         | BadTokenData c -> BadToken, string c, None
         | IntLiteralTokenData i -> IntLiteralToken, string i, Some (IntValue i)
-        //| IdentifierTokenData identifierText -> IdentifierToken, identifierText, None // TODO keywords
+        | IdentifierTokenData identifierText -> IdentifierToken, identifierText, None
         | TokenKind k ->
             match k with
             | EndOfFileToken -> k, char 0 |> string, None
@@ -96,6 +107,8 @@ module private Lexer =
             | SlashToken -> k, "/", None
             | OpenParenthesisToken -> k, "(", None
             | CloseParenthesisToken -> k, ")", None
+            | CommaToken -> k, ",", None
+            | KeywordToken keyword -> k, (SyntaxFacts.keywordText keyword), None
             (*| PipeToken
             | BitwiseOrToken
             | BitwiseXorToken
