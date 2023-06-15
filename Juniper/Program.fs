@@ -45,11 +45,19 @@ let helpText =
 [<EntryPoint>]
 let main argv =
 
-    let mutable line = System.Console.ReadLine()
     while true do
-        let syntaxTree = Parsing.Parser.Syntax.parse "<repl>" line
-        printfn "%A" syntaxTree
-        line <- System.Console.ReadLine()
+        let mutable source = ""
+        let mutable line = System.Console.ReadLine()
+        while line <> ";;" do
+            source <- source + System.Environment.NewLine + line
+            line <- System.Console.ReadLine()
+
+        let syntaxTree = Parsing.Parser.Syntax.parse "<repl>" source
+        printfn "%A" syntaxTree.expression
+        printfn "%A" syntaxTree.lexErrors
+        for Parsing.Parser.PE (startPosition, endPosition, message, rest) in syntaxTree.parseErrors do
+            printfn "%A - %A: %s (+%i)" startPosition endPosition message (rest.Length)
+
 
 
 

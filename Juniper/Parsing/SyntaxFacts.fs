@@ -20,9 +20,11 @@ let getKeyword (text: string) =
     match text with
     | "module" -> Some ModuleKeyword
     | "open" -> Some OpenKeyword
+    | "let" -> Some LetKeyword
     | _ -> None
 
 let keywordText (keyword: Keyword) =
     match keyword with
     | ModuleKeyword -> "module"
     | OpenKeyword -> "open"
+    | LetKeyword -> "let"

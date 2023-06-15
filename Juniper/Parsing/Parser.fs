@@ -3,7 +3,7 @@ module Parsing.Parser
 open Tokens
 open Lexer
 
-type ParseError = FParsec.Position * FParsec.Position * string
+type ParseError = PE of (FParsec.Position * FParsec.Position * string * (ParseError list))
 
 type SeparatedSyntaxList<'TItem> =
     | EmptySyntaxList
@@ -12,23 +12,55 @@ type SeparatedSyntaxList<'TItem> =
 type ModuleDefinitionSyntax =
     {
         moduleName: ModuleNameSyntax
-        openModules: OpenModulesSyntax option
+        declarations: DeclarationSyntax list
     }
 and ModuleNameSyntax =
     {
         moduleKeyword: Token
         moduleNameIdentifier: Token
     }
+and DeclarationSyntax =
+    | OpenModulesDeclarationSyntax of OpenModulesSyntax
+    | LetDeclarationSyntax of LetDeclarationSyntax
 and OpenModulesSyntax =
     {
         openKeyword: Token
         openParenthesis: Token
         openedModuleNameIdentifiers: SeparatedSyntaxList<Token>
         closeParenthesis: Token
+    } with
+    static member Create openKeyword openParenthesis moduleNames closeParenthesis =
+        {
+            openKeyword = openKeyword
+            openParenthesis = openParenthesis
+            openedModuleNameIdentifiers = moduleNames
+            closeParenthesis = closeParenthesis
+        }
+and LetDeclarationSyntax =
+    {
+        letKeyword: Token
+        identifier: Token
+        optionalType: (Token * TypeExpressionSyntax) option
+        equals: Token
+        body: ExpressionSyntax
+    }
+and ModuleQualifierSyntax =
+    {
+        moduleNameIdentifier: Token
+        colon: Token
+        moduleDeclarationNameIdentifier: Token
+    }
+and IdentifierDeclarationReferenceSyntax =
+    {
+        declarationNameIdentifier: Token   
     }
 
-type SyntaxNode =
-    | ExpressionSyntax of ExpressionSyntax
+and DeclarationReferenceSyntax =
+    | IdentifierDeclarationReference of IdentifierDeclarationReferenceSyntax
+    | ModuleQualifierDeclarationReference of ModuleQualifierSyntax
+
+and TypeExpressionSyntax =
+    | DeclarationReferenceTypeExpression of DeclarationReferenceSyntax
 
 and ExpressionSyntax =
     | BinaryExpressionSyntax of ExpressionSyntax * Token * ExpressionSyntax
@@ -84,8 +116,19 @@ module Syntax =
                         text = None
                         tokenKind = tokenKind
                     }
-                let newError = (currentToken.start, currentToken.start, sprintf "unexpected token <%A>, expecting <%A>" currentToken.tokenKind tokenKind)
-                matchedToken, ParserState (currentToken, newError :: errors)
+                let newError = PE (currentToken.start, currentToken.end_, sprintf "unexpected token <%A>, expecting <%A>" currentToken.tokenKind tokenKind, [])
+                let newErrors =
+                    match errors with
+                    | PE (startPos, endPos, text, children) :: rest when startPos = currentToken.start && endPos = currentToken.end_ ->
+                        PE (startPos, endPos, text, newError :: children) :: rest
+                    | _ -> newError :: errors
+                        
+                matchedToken, ParserState (currentToken, newErrors)
+
+    let map f (par: Parser<_>): Parser<_> =
+        fun (lexer, state) ->
+            let (x, state') = par (lexer,state)
+            f x, state'
 
     let bind (f: _ -> Parser<_>) (par: Parser<_>) =
         fun (lexer, state) ->
@@ -101,6 +144,41 @@ module Syntax =
         member __.ReturnFrom x = x
 
     let par = ParBuilder()
+
+    let pipe2 (p1: Parser<_>) (p2: Parser<_>) f : Parser<_> = fun (lexer,state) ->
+        let (x, state') = p1 (lexer,state)
+        let (y, state'') = p2 (lexer, state')
+        f x y, state''
+        
+    let pipe3 (p1: Parser<_>) (p2: Parser<_>) (p3 : Parser<_>) f : Parser<_> = fun (lexer,state) ->
+        let (x, state) = p1 (lexer,state)
+        let (y, state) = p2 (lexer, state)
+        let (z, state) = p3 (lexer, state)
+        f x y z, state
+
+    let pipe4 (p1: Parser<_>) (p2: Parser<_>) (p3 : Parser<_>) (p4 : Parser<_>) f : Parser<_> = fun (lexer,state) ->
+        let (a, state) = p1 (lexer,state)
+        let (b, state) = p2 (lexer, state)
+        let (c, state) = p3 (lexer, state)
+        let (d, state) = p4 (lexer, state)
+        f a b c d, state
+    
+    let pipe5 (p1: Parser<_>) (p2: Parser<_>) (p3 : Parser<_>) (p4 : Parser<_>) (p5 : Parser<_>) f : Parser<_> = fun (lexer,state) ->
+        let (a, state) = p1 (lexer,state)
+        let (b, state) = p2 (lexer, state)
+        let (c, state) = p3 (lexer, state)
+        let (d, state) = p4 (lexer, state)
+        let (e, state) = p5 (lexer, state)
+        f a b c d e, state
+
+    let pipe6 (p1: Parser<_>) (p2: Parser<_>) (p3 : Parser<_>) (p4 : Parser<_>) (p5 : Parser<_>) (p6 : Parser<_>) f : Parser<_> = fun (lexer,state) ->
+        let (a, state) = p1 (lexer,state)
+        let (b, state) = p2 (lexer, state)
+        let (c, state) = p3 (lexer, state)
+        let (d, state) = p4 (lexer, state)
+        let (e, state) = p5 (lexer, state)
+        let (g, state) = p6 (lexer, state)
+        f a b c d e g, state
 
     let currentKind : Parser<TokenKind> =
         current
@@ -133,15 +211,15 @@ module Syntax =
 
     let manyWhile (cond: Parser<bool>) (body: Parser<_>) =
         let rec inner x =
-            par {
+            (par {
                 let! condResult = cond
                 if condResult then
                     let! current = body
-                    let! rest = inner x
+                    let! rest = inner
                     return current :: rest
                 else
                     return []
-            }
+            }) x
         inner
 
     let ifCurrentKind peekKind parser =
@@ -166,7 +244,9 @@ module Syntax =
                 let! numberToken = matchToken TokenKind.IntLiteralToken
                 return NumberExpressionSyntax numberToken
         }
+
     and expression : Parser<ExpressionSyntax> = term
+
     and factor : Parser<ExpressionSyntax> =
         let rec factorRight left =
             par {
@@ -179,6 +259,7 @@ module Syntax =
                 | _ -> return left
             }
         primaryExpression |> bind factorRight
+
     and term : Parser<ExpressionSyntax> =
         let rec termRight left =
             par {
@@ -191,6 +272,20 @@ module Syntax =
                 | _ -> return left
             }
         factor |> bind termRight
+    
+    and parseModuleDefinition =
+        par {
+            let! moduleName = parseModuleName
+            let! declarations =
+                manyWhile
+                    (currentKind |> map ((<>) EndOfFileToken))
+                    parseDeclaration
+            return {
+                moduleName = moduleName
+                declarations = declarations
+            }
+        }
+
     and parseModuleName : Parser<ModuleNameSyntax> =
         par {
             let! moduleKeyword = matchToken (KeywordToken ModuleKeyword)
@@ -200,30 +295,87 @@ module Syntax =
                 moduleNameIdentifier = moduleName
             }
         }
+
+    and parseDeclaration : Parser<DeclarationSyntax> =
+        par {
+            match! currentKind with
+            | KeywordToken OpenKeyword ->
+                let! openModules = parseOpenModules
+                return OpenModulesDeclarationSyntax openModules
+            | KeywordToken LetKeyword ->
+                let! letDeclaration = parseLetDeclaration
+                return LetDeclarationSyntax letDeclaration
+            | _ ->
+                // token is not recognized as top level declaration: skip it
+                // give a syntax error
+                let! _ = matchToken (KeywordToken LetKeyword)
+                // and consume the unexpected token
+                let! _ = nextToken
+                // and try again if it's not the end of the file
+                match! currentKind with
+                | EndOfFileToken ->
+                    // if it's EOF, let's report that we're wanting a let declaration so that we can return something
+                    let! letDeclaration = parseLetDeclaration
+                    return LetDeclarationSyntax letDeclaration
+                | _ ->
+                    //otherwise just try again
+                    return! parseDeclaration
+        }
+
     and parseOpenModules : Parser<OpenModulesSyntax> =
+        pipe4
+            (matchToken (KeywordToken OpenKeyword))
+            (matchToken OpenParenthesisToken)
+            (manySep (matchToken IdentifierToken) CommaToken CloseParenthesisToken)
+            (matchToken CloseParenthesisToken)
+            OpenModulesSyntax.Create
+
+    and parseLetDeclaration : Parser<LetDeclarationSyntax> =
         par {
-            let! openKeyword = matchToken (KeywordToken OpenKeyword)
-            let! openParenthesis = matchToken OpenParenthesisToken
-            let! moduleNames = manySep (matchToken IdentifierToken) CommaToken CloseParenthesisToken
-            let! closeParenthesis = matchToken CloseParenthesisToken
+            let! letKeyword = matchToken (KeywordToken LetKeyword)
+            let! identifier = matchToken IdentifierToken
+            let! optionalType =
+                pipe2
+                    (matchToken ColonToken)
+                    (parseTypeExpression)
+                    (fun colon typeExpression -> colon, typeExpression)
+                |> ifCurrentKind ColonToken
+            let! equals = matchToken EqualsToken
+            let! body = expression
             return {
-                openKeyword = openKeyword
-                openParenthesis = openParenthesis
-                openedModuleNameIdentifiers = moduleNames
-                closeParenthesis = closeParenthesis
+                letKeyword = letKeyword
+                identifier = identifier
+                optionalType = optionalType
+                equals = equals
+                body = body
             }
         }
-    and parseModuleDefinition =
+
+    and parseDeclarationReference : Parser<DeclarationReferenceSyntax> =
         par {
-            let! moduleName = parseModuleName
-            let! openModules =
-                parseOpenModules
-                |> ifCurrentKind (KeywordToken OpenKeyword)
-            return {
-                moduleName = moduleName
-                openModules = openModules
-            }
+            let! identifier = matchToken IdentifierToken
+            let optionalModuleDeclarationAccess =
+                pipe2
+                    (matchToken ColonToken)
+                    (matchToken IdentifierToken)
+                    (fun colon moduleDeclarationName -> colon, moduleDeclarationName)
+                |> ifCurrentKind ColonToken
+            match! optionalModuleDeclarationAccess with
+            | Some (colon, moduleDeclarationNameIdentifier) ->
+                return ModuleQualifierDeclarationReference {
+                    moduleNameIdentifier = identifier
+                    colon = colon
+                    moduleDeclarationNameIdentifier = moduleDeclarationNameIdentifier
+                }
+            | _ ->
+                return IdentifierDeclarationReference {
+                    declarationNameIdentifier = identifier
+                }
         }
+
+    and parseTypeExpression : Parser<TypeExpressionSyntax> =
+        parseDeclarationReference |> map DeclarationReferenceTypeExpression
+
     and syntaxTree : Parser<SyntaxTree> =
         par {
             //let! expr = expression

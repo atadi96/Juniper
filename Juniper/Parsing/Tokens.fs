@@ -7,6 +7,7 @@ type TokenValue =
 type Keyword =
     | ModuleKeyword
     | OpenKeyword
+    | LetKeyword
 
 type TokenKind =
     | BadToken
@@ -18,33 +19,33 @@ type TokenKind =
     | OpenParenthesisToken
     | CloseParenthesisToken
     | KeywordToken of Keyword
-    (*| PipeToken
-    | BitwiseOrToken
-    | BitwiseXorToken
-    | BitwiseAndToken
-    | BitwiseNotToken
-    | EqualsEqualsToken
+    //| PipeToken
+    //| BitwiseOrToken
+    //| BitwiseXorToken
+    //| BitwiseAndToken
+    //| BitwiseNotToken
+    //| EqualsEqualsToken
     | EqualsToken
-    | BangEqualsToken
-    | LessThanToken
-    | LessThanOrEqualToken
-    | GreaterThanToken
-    | GreaterThanOrEqualToken
-    | BangToken
-    | BitshiftRightToken
-    | BitshiftLeftToken
-    | OpenBraceToken
-    | CloseBraceToken
-    | OpenBracketToken
-    | CloseBracketToken
+    //| BangEqualsToken
+    //| LessThanToken
+    //| LessThanOrEqualToken
+    //| GreaterThanToken
+    //| GreaterThanOrEqualToken
+    //| BangToken
+    //| BitshiftRightToken
+    //| BitshiftLeftToken
+    //| OpenBraceToken
+    //| CloseBraceToken
+    //| OpenBracketToken
+    //| CloseBracketToken
     | ColonToken
-    | SemicolonToken
-    | UnsafeTypeCastToken
-    | ApostropheToken
-    | InlineCppToken
-    | ArrowToken
-    | DoubleArrowToken
-    | StringLiteralToken*)
+    //| SemicolonToken
+    //| UnsafeTypeCastToken
+    //| ApostropheToken
+    //| InlineCppToken
+    //| ArrowToken
+    //| DoubleArrowToken
+    //| StringLiteralToken
     | CommaToken
     | IntLiteralToken
     | IdentifierToken

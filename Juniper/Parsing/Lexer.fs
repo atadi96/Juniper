@@ -55,6 +55,7 @@ module private Lexer =
 
             skipChar '+' >>% TokenKind PlusToken
             skipChar '-' >>% TokenKind MinusToken
+            //skipChar '-' >>. (skipChar '>' >>% TokenKind ArrowToken <|> preturn (TokenKind MinusToken))
             
             skipChar '*' >>% TokenKind StarToken
             skipChar '/' >>% TokenKind SlashToken
@@ -63,33 +64,33 @@ module private Lexer =
             skipChar ')' >>% TokenKind CloseParenthesisToken
 
             skipChar ',' >>% TokenKind CommaToken
+            
+            skipChar '=' >>% TokenKind EqualsToken
+            //skipChar '=' >>. choice [ skipChar '=' >>% TokenKind EqualsEqualsToken; skipChar '>' >>% TokenKind DoubleArrowToken; preturn (TokenKind EqualsToken) ]
 
+            //skipChar '!' >>. (skipChar '=' >>% TokenKind BangEqualsToken <|> preturn (TokenKind BangToken))
+            //skipChar '|' >>. choice [ skipChar '>' >>% TokenKind PipeToken; skipString "||" >>% TokenKind BitwiseOrToken ]
+            //skipChar '<' >>. choice [ skipChar '=' >>% TokenKind LessThanOrEqualToken; skipString "<<" >>% TokenKind BitshiftLeftToken; preturn (TokenKind LessThanToken) ]
+            //skipChar '>' >>. choice [ skipChar '=' >>% TokenKind GreaterThanOrEqualToken; skipString ">>" >>% TokenKind BitshiftRightToken; preturn (TokenKind GreaterThanToken) ]
+            //skipChar '{' >>% TokenKind OpenBraceToken
+            //skipChar '}' >>% TokenKind CloseBraceToken
+            //skipChar '[' >>% TokenKind OpenBracketToken
+            //skipChar ']' >>% TokenKind CloseBracketToken
+
+            skipChar ':' >>% TokenKind ColonToken
+            //skipChar ':' >>. (skipString ":::" >>% TokenKind UnsafeTypeCastToken <|> preturn (TokenKind ColonToken))
+
+            //skipChar ';' >>% TokenKind SemicolonToken
+            //skipString "&&&" >>% TokenKind BitwiseAndToken
+            //skipString "^^^" >>% TokenKind BitwiseXorToken
+            //skipString "~~~" >>% TokenKind BitwiseNotToken
+            //followedByString "\"" >>. Parse.stringLiteral '"' true |>> StringLiteralTokenData // TODO unterminated string
+            //followedByString "#" >>. (inlineCppToken |>> InlineCppTokenData)
+            
+            
             followedBy digit >>. pint64 |>> IntLiteralTokenData
-
+            
             followedBy (asciiLetter <|> pchar '_') >>. Parse.id |>> getKeywordOrIdentifierTokenData
-            (*
-            skipChar '+' >>% TokenKind PlusToken
-            skipChar '-' >>. (skipChar '>' >>% TokenKind ArrowToken <|> preturn (TokenKind MinusToken))
-            skipChar '=' >>. choice [ skipChar '=' >>% TokenKind EqualsEqualsToken; skipChar '>' >>% TokenKind DoubleArrowToken; preturn (TokenKind EqualsToken) ]
-            skipChar '!' >>. (skipChar '=' >>% TokenKind BangEqualsToken <|> preturn (TokenKind BangToken))
-            skipChar '|' >>. choice [ skipChar '>' >>% TokenKind PipeToken; skipString "||" >>% TokenKind BitwiseOrToken ]
-            skipChar '*' >>% TokenKind StarToken
-            skipChar '<' >>. choice [ skipChar '=' >>% TokenKind LessThanOrEqualToken; skipString "<<" >>% TokenKind BitshiftLeftToken; preturn (TokenKind LessThanToken) ]
-            skipChar '>' >>. choice [ skipChar '=' >>% TokenKind GreaterThanOrEqualToken; skipString ">>" >>% TokenKind BitshiftRightToken; preturn (TokenKind GreaterThanToken) ]
-            skipChar '{' >>% TokenKind OpenBraceToken
-            skipChar '}' >>% TokenKind CloseBraceToken
-            skipChar '[' >>% TokenKind OpenBracketToken
-            skipChar ']' >>% TokenKind CloseBracketToken
-            skipChar ':' >>. (skipString ":::" >>% TokenKind UnsafeTypeCastToken <|> preturn (TokenKind ColonToken))
-            skipChar ';' >>% TokenKind SemicolonToken
-            skipString "&&&" >>% TokenKind BitwiseAndToken
-            skipString "^^^" >>% TokenKind BitwiseXorToken
-            skipString "~~~" >>% TokenKind BitwiseNotToken
-            followedByString "\"" >>. Parse.stringLiteral '"' true |>> StringLiteralTokenData // TODO unterminated string
-            followedByString "#" >>. (inlineCppToken |>> InlineCppTokenData)
-            followedBy digit >>. pint64 |>> IntLiteralTokenData
-            followedBy (asciiLetter <|> pchar '_') >>. Parse.id |>> IdentifierTokenData
-            *)
             // TODO character array literals
             badToken
           ]
@@ -108,7 +109,12 @@ module private Lexer =
             | OpenParenthesisToken -> k, "(", None
             | CloseParenthesisToken -> k, ")", None
             | CommaToken -> k, ",", None
+            | EqualsToken -> k, "=", None
+            | ColonToken -> k, ":", None
             | KeywordToken keyword -> k, (SyntaxFacts.keywordText keyword), None
+            | BadToken
+            | IdentifierToken
+            | IntLiteralToken -> failwith "already handled"
             (*| PipeToken
             | BitwiseOrToken
             | BitwiseXorToken
@@ -171,3 +177,6 @@ type Lexer(streamName: string, text: string) =
 
     member __.GetErrors() =
         stream.UserState.parserErrors |> List.rev |> List.map (fun (a,_,_) -> a)
+
+    member __.Position() =
+        stream.Position
