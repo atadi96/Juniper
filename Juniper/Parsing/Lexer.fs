@@ -69,8 +69,14 @@ module private Lexer =
             //skipChar '=' >>. choice [ skipChar '=' >>% TokenKind EqualsEqualsToken; skipChar '>' >>% TokenKind DoubleArrowToken; preturn (TokenKind EqualsToken) ]
 
             //skipChar '!' >>. (skipChar '=' >>% TokenKind BangEqualsToken <|> preturn (TokenKind BangToken))
-            //skipChar '|' >>. choice [ skipChar '>' >>% TokenKind PipeToken; skipString "||" >>% TokenKind BitwiseOrToken ]
+
+            skipChar '|' >>% TokenKind PipeToken
+            //skipChar '|' >>. choice [ skipChar '>' >>% TokenKind PipeOperatorToken; skipString "||" >>% TokenKind BitwiseOrToken ]
+
+            skipChar '<' >>% TokenKind LessThanToken
             //skipChar '<' >>. choice [ skipChar '=' >>% TokenKind LessThanOrEqualToken; skipString "<<" >>% TokenKind BitshiftLeftToken; preturn (TokenKind LessThanToken) ]
+
+            skipChar '>' >>% TokenKind GreaterThanToken
             //skipChar '>' >>. choice [ skipChar '=' >>% TokenKind GreaterThanOrEqualToken; skipString ">>" >>% TokenKind BitshiftRightToken; preturn (TokenKind GreaterThanToken) ]
             //skipChar '{' >>% TokenKind OpenBraceToken
             //skipChar '}' >>% TokenKind CloseBraceToken
@@ -115,33 +121,31 @@ module private Lexer =
             | BadToken
             | IdentifierToken
             | IntLiteralToken -> failwith "already handled"
-            (*| PipeToken
-            | BitwiseOrToken
-            | BitwiseXorToken
-            | BitwiseAndToken
-            | BitwiseNotToken
-            | EqualsEqualsToken
-            | EqualsToken
-            | BangEqualsToken
-            | LessThanToken
-            | LessThanOrEqualToken
-            | GreaterThanToken
-            | GreaterThanOrEqualToken
-            | BangToken
-            | BitshiftRightToken
-            | BitshiftLeftToken
-            | OpenBraceToken
-            | CloseBraceToken
-            | OpenBracketToken
-            | CloseBracketToken
-            | ColonToken
-            | SemicolonToken
-            | UnsafeTypeCastToken
-            | CommaToken
-            | ApostropheToken
-            | ArrowToken
-            | DoubleArrowToken -> k, "?", None
-            *)
+            | PipeToken -> k, "|", None
+            //| BitwiseOrToken
+            //| BitwiseXorToken
+            //| BitwiseAndToken
+            //| BitwiseNotToken
+            //| EqualsEqualsToken
+            //| EqualsToken
+            //| BangEqualsToken
+            | LessThanToken -> k, "<", None
+            //| LessThanOrEqualToken
+            | GreaterThanToken -> k, ">", None
+            //| GreaterThanOrEqualToken
+            //| BangToken
+            //| BitshiftRightToken
+            //| BitshiftLeftToken
+            //| OpenBraceToken
+            //| CloseBraceToken
+            //| OpenBracketToken
+            //| CloseBracketToken
+            //| SemicolonToken
+            //| UnsafeTypeCastToken
+            //| CommaToken
+            //| ApostropheToken
+            //| ArrowToken
+            //| DoubleArrowToken -> k, "?", None
     let token : Parser<Token> =
         skipMany (pchar ' ') >>.
         pipe3

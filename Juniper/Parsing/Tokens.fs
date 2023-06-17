@@ -8,6 +8,8 @@ type Keyword =
     | ModuleKeyword
     | OpenKeyword
     | LetKeyword
+    | TypeKeyword
+    | AliasKeyword
 
 type TokenKind =
     | BadToken
@@ -19,7 +21,7 @@ type TokenKind =
     | OpenParenthesisToken
     | CloseParenthesisToken
     | KeywordToken of Keyword
-    //| PipeToken
+    | PipeToken
     //| BitwiseOrToken
     //| BitwiseXorToken
     //| BitwiseAndToken
@@ -27,9 +29,9 @@ type TokenKind =
     //| EqualsEqualsToken
     | EqualsToken
     //| BangEqualsToken
-    //| LessThanToken
+    | LessThanToken
     //| LessThanOrEqualToken
-    //| GreaterThanToken
+    | GreaterThanToken
     //| GreaterThanOrEqualToken
     //| BangToken
     //| BitshiftRightToken

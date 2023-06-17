@@ -21,6 +21,8 @@ let getKeyword (text: string) =
     | "module" -> Some ModuleKeyword
     | "open" -> Some OpenKeyword
     | "let" -> Some LetKeyword
+    | "alias" -> Some AliasKeyword
+    | "type" -> Some TypeKeyword
     | _ -> None
 
 let keywordText (keyword: Keyword) =
@@ -28,3 +30,5 @@ let keywordText (keyword: Keyword) =
     | ModuleKeyword -> "module"
     | OpenKeyword -> "open"
     | LetKeyword -> "let"
+    | AliasKeyword -> "alias"
+    | TypeKeyword -> "type"

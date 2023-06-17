@@ -9,6 +9,8 @@ type SeparatedSyntaxList<'TItem> =
     | EmptySyntaxList
     | SeparatedSyntaxList of 'TItem * (Token * 'TItem) list
 
+and SeparatedNonEmptySyntaxList<'TItem> = SeparatedNonEmptySyntaxList of 'TItem * (Token * 'TItem) list
+
 type ModuleDefinitionSyntax =
     {
         moduleName: ModuleNameSyntax
@@ -22,6 +24,8 @@ and ModuleNameSyntax =
 and DeclarationSyntax =
     | OpenModulesDeclarationSyntax of OpenModulesSyntax
     | LetDeclarationSyntax of LetDeclarationSyntax
+    | AlgebraicTypeSyntax of AlgebraicTypeSyntax
+    | AliasSyntax of AliasSyntax
 and OpenModulesSyntax =
     {
         openKeyword: Token
@@ -36,6 +40,35 @@ and OpenModulesSyntax =
             openedModuleNameIdentifiers = moduleNames
             closeParenthesis = closeParenthesis
         }
+and TemplateDeclarationSyntax =
+    {
+        lessThanSign: Token
+        // TODO
+        greaterThanSign: Token
+    }
+and AlgebraicTypeSyntax =
+    {
+        typeKeyword: Token
+        algebraicTypeIdentifier: Token
+        optionalTemplateDeclaration: TemplateDeclarationSyntax option
+        equals: Token
+        valueConstructors: SeparatedNonEmptySyntaxList<ValueConstructorSyntax>
+    }
+and AliasSyntax =
+    {
+        aliasKeyword: Token
+        aliasIdentifier: Token
+        optionalTemplateDeclaration: TemplateDeclarationSyntax option
+        equals: Token
+        aliasOfType: TypeExpressionSyntax
+    }
+and ValueConstructorSyntax =
+    {
+        valueConstructorIdentifier: Token
+        openParenthesis: Token
+        valueConstructorParameterTypes: SeparatedSyntaxList<TypeExpressionSyntax>
+        closeParenthesis: Token
+    }
 and LetDeclarationSyntax =
     {
         letKeyword: Token
@@ -208,6 +241,26 @@ module Syntax =
                 let! sepItems = nextItemParser
                 return SeparatedSyntaxList (firstItem, sepItems)
         }
+        
+    let many1Sep (item: Parser<_>) (sepToken): Parser<SeparatedNonEmptySyntaxList<_>> =
+        let rec nextItemParser (lexer: Lexer,parserState : ParserState) = 
+            sepItemParser (lexer,parserState)
+        and sepItemParser =
+            par {
+                let! currentTokenKind = currentKind
+                if currentTokenKind = sepToken then
+                    let! sepToken = nextToken
+                    let! currentItem = item
+                    let! rest = nextItemParser
+                    return (sepToken, currentItem) :: rest
+                else
+                    return []
+            }
+        par {
+            let! firstItem = item
+            let! sepItems = nextItemParser
+            return SeparatedNonEmptySyntaxList (firstItem, sepItems)
+        }
 
     let manyWhile (cond: Parser<bool>) (body: Parser<_>) =
         let rec inner x =
@@ -305,6 +358,12 @@ module Syntax =
             | KeywordToken LetKeyword ->
                 let! letDeclaration = parseLetDeclaration
                 return LetDeclarationSyntax letDeclaration
+            | KeywordToken TypeKeyword ->
+                let! algebraicType = parseAlgebraicType
+                return AlgebraicTypeSyntax algebraicType
+            | KeywordToken AliasKeyword ->
+                let! alias = parseAlias
+                return AliasSyntax alias
             | _ ->
                 // token is not recognized as top level declaration: skip it
                 // give a syntax error
@@ -329,6 +388,67 @@ module Syntax =
             (manySep (matchToken IdentifierToken) CommaToken CloseParenthesisToken)
             (matchToken CloseParenthesisToken)
             OpenModulesSyntax.Create
+
+    and parseTemplateDec : Parser<TemplateDeclarationSyntax> =
+        pipe2
+            (matchToken (LessThanToken))
+            (matchToken (GreaterThanToken))
+            (fun lt gt -> {
+                lessThanSign = lt
+                greaterThanSign = gt
+            })
+
+    and parseAlgebraicType : Parser<AlgebraicTypeSyntax> =
+        par {
+            let! typeKeyword = matchToken (KeywordToken TypeKeyword)
+            let! typeIdentifier = matchToken (IdentifierToken)
+            let! optionalTemplateDeclaration =
+                parseTemplateDec
+                |> ifCurrentKind LessThanToken
+            let! equals = matchToken EqualsToken
+            let! valueConstructors =
+                many1Sep parseValueConstructor PipeToken
+            return {
+                typeKeyword = typeKeyword
+                algebraicTypeIdentifier = typeIdentifier
+                optionalTemplateDeclaration = optionalTemplateDeclaration
+                equals = equals
+                valueConstructors = valueConstructors
+            }
+        }
+
+    and parseAlias : Parser<AliasSyntax> =
+        par {
+            let! aliasKeyword = matchToken (KeywordToken AliasKeyword)
+            let! aliasIdentifier = matchToken (IdentifierToken)
+            let! optionalTemplateDeclaration =
+                parseTemplateDec
+                |> ifCurrentKind LessThanToken
+            let! equals = matchToken EqualsToken
+            let! aliasOfType = parseTypeExpression
+            return {
+                aliasKeyword = aliasKeyword
+                aliasIdentifier = aliasIdentifier
+                optionalTemplateDeclaration = optionalTemplateDeclaration
+                equals = equals
+                aliasOfType = aliasOfType
+            }
+        }
+
+    and parseValueConstructor : Parser<ValueConstructorSyntax> =
+        par {
+            let! valueConstructorIdentifier = matchToken IdentifierToken
+            let! openParenthesis = matchToken OpenParenthesisToken
+            let! valueConstructorParameterTypes =
+                manySep parseTypeExpression CommaToken CloseParenthesisToken
+            let! closeParenthesis = matchToken CloseParenthesisToken
+            return {
+                valueConstructorIdentifier = valueConstructorIdentifier
+                openParenthesis = openParenthesis
+                valueConstructorParameterTypes = valueConstructorParameterTypes
+                closeParenthesis = closeParenthesis
+            }
+        }
 
     and parseLetDeclaration : Parser<LetDeclarationSyntax> =
         par {
@@ -378,7 +498,6 @@ module Syntax =
 
     and syntaxTree : Parser<SyntaxTree> =
         par {
-            //let! expr = expression
             let! module_ = parseModuleDefinition
             let! eofToken = matchToken TokenKind.EndOfFileToken
             let! (parseErrors, lexErrors) = errors
