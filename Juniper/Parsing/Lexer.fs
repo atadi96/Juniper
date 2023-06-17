@@ -16,7 +16,7 @@ type UserState =
             parserErrors = ((stream.Position, errorText), errorMsg, error) :: this.parserErrors
         }
    
-and Parser<'t> = Parser<'t, UserState>
+and FParser<'t> = Parser<'t, UserState>
 
 module private Lexer =
     type TokenData =
@@ -27,7 +27,7 @@ module private Lexer =
          //| StringLiteralTokenData of string
          | IdentifierTokenData of string
 
-    let badToken : Parser<TokenData> =
+    let badToken : FParser<TokenData> =
          fun stream ->
              stream.UserState <-
                  stream
@@ -48,7 +48,7 @@ module private Lexer =
         |> Option.map (KeywordToken >> TokenKind)
         |> Option.defaultValue (IdentifierTokenData text)
 
-    let tokenData : Parser<TokenData> =
+    let tokenData : FParser<TokenData> =
         choice
           [
             eof >>% TokenKind EndOfFileToken
@@ -146,7 +146,7 @@ module private Lexer =
             //| ApostropheToken
             //| ArrowToken
             //| DoubleArrowToken -> k, "?", None
-    let token : Parser<Token> =
+    let token : FParser<Token> =
         skipMany (pchar ' ') >>.
         pipe3
             getPosition
@@ -163,7 +163,7 @@ module private Lexer =
                 }
             )
 
-    let initP : Parser<CharStream<UserState>> = fun stream -> Reply(stream)
+    let initP : FParser<CharStream<UserState>> = fun stream -> Reply(stream)
 
    // TODO lexer modes -> separate lexer for expr and types -> solves the issue of type arg vs character array literal; solves issue of pattern _ vs identifier _ ..?
 

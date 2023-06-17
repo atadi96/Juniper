@@ -19,7 +19,9 @@
 	<Compile Include="Parsing/Tokens.fs" />
 	<Compile Include="Parsing\SyntaxFacts.fs" />
 	<Compile Include="Parsing/Lexer.fs" />
+	<Compile Include="Parsing\SyntaxTree.fs" />
 	<Compile Include="Parsing/Parser.fs" />
+	<Compile Include="Parsing\Syntax.fs" />
     <Compile Include="ConvertAst.fs" />
     <Compile Include="Module.fs" />
     <Compile Include="TypeChecker.fs" />
