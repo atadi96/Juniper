@@ -4,50 +4,8 @@ open Parsing.Parser
 open SyntaxTree
 open Tokens
 open Lexer
-
-
-let rec primaryExpression : Parser<ExpressionSyntax> =
-    par {
-        let! currentToken = current
-        if currentToken.tokenKind = TokenKind.OpenParenthesisToken then
-            let! openPar = nextToken
-            let! expr = expression
-            let! closePar = matchToken TokenKind.CloseParenthesisToken
-            return ParenthesizedExpressionSyntax (openPar, expr, closePar)
-        else
-            let! numberToken = matchToken TokenKind.IntLiteralToken
-            return NumberExpressionSyntax numberToken
-    }
-
-and expression : Parser<ExpressionSyntax> = term
-
-and factor : Parser<ExpressionSyntax> =
-    let rec factorRight left =
-        par {
-            match! currentKind with
-            | SlashToken
-            | StarToken ->
-                let! operatorToken = nextToken
-                let! right = primaryExpression
-                return! factorRight (BinaryExpressionSyntax (left, operatorToken, right))
-            | _ -> return left
-        }
-    primaryExpression |> bind factorRight
-
-and term : Parser<ExpressionSyntax> =
-    let rec termRight left =
-        par {
-            match! currentKind with
-            | PlusToken
-            | MinusToken ->
-                let! operatorToken = nextToken
-                let! right = factor
-                return! termRight (BinaryExpressionSyntax (left, operatorToken, right))
-            | _ -> return left
-        }
-    factor |> bind termRight
     
-and parseModuleDefinition =
+let rec parseModuleDefinition =
     par {
         let! moduleName = parseModuleName
         let! declarations =
@@ -85,6 +43,9 @@ and parseDeclaration : Parser<DeclarationSyntax> =
         | KeywordToken AliasKeyword ->
             let! alias = parseAlias
             return AliasSyntax alias
+        | KeywordToken FunKeyword ->
+            let! func = parseFunctionDeclaration
+            return FunctionDeclarationSyntax func
         | _ ->
             // token is not recognized as top level declaration: skip it
             // give a syntax error
@@ -182,13 +143,61 @@ and parseLetDeclaration : Parser<LetDeclarationSyntax> =
                 (fun colon typeExpression -> colon, typeExpression)
             |> ifCurrentKind ColonToken
         let! equals = matchToken EqualsToken
-        let! body = expression
+        let! body = parseExpression
         return {
             letKeyword = letKeyword
             identifier = identifier
             optionalType = optionalType
             equals = equals
             body = body
+        }
+    }
+
+and parseFunctionDeclaration : Parser<FunctionDeclarationSyntax> =
+    par {
+        let! funKeyword = matchToken (KeywordToken FunKeyword)
+        let! identifier = matchToken IdentifierToken
+        let! optionalTemplateDeclaration =
+            parseTemplateDec
+            |> ifCurrentKind LessThanToken
+        let! openParenthesis = matchToken OpenParenthesisToken
+        let! functionArguments =
+            manySep parseIdentifierWithOptionalType CommaToken CloseParenthesisToken
+        let! closeParenthesis = matchToken CloseParenthesisToken
+        // TODO constraints
+        let! optionalType =
+            pipe2
+                (matchToken ColonToken)
+                parseTypeExpression
+                (fun colon typeExpression -> colon, typeExpression)
+            |> ifCurrentKind ColonToken
+        let! equal = matchToken EqualsToken
+        let! functionBody = parseExpression
+        return {
+            funKeyword = funKeyword
+            identifier = identifier
+            optionalTemplateDeclaration = optionalTemplateDeclaration
+            openParenthesis = openParenthesis
+            functionArguments = functionArguments
+            closeParenthesis = closeParenthesis
+            optionalType = optionalType
+            equals = equal
+            functionBody = functionBody
+        }
+    }
+
+and parseIdentifierWithOptionalType : Parser<IdentifierWithOptionalType> =
+    par {
+        let! identifier = matchToken IdentifierToken
+        let! optionalType =
+            pipe2
+                (matchToken ColonToken)
+                parseTypeExpression
+                (fun colon typeExpression -> colon, typeExpression)
+            |> ifCurrentKind ColonToken
+        return {
+            identifier = identifier
+            optionalType = optionalType
         }
     }
 
@@ -216,6 +225,65 @@ and parseDeclarationReference : Parser<DeclarationReferenceSyntax> =
 
 and parseTypeExpression : Parser<TypeExpressionSyntax> =
     parseDeclarationReference |> map DeclarationReferenceTypeExpression
+
+and parseExpression : Parser<ExpressionSyntax> =
+    par {
+        match! currentKind with
+        // | statements?
+        | _ -> return! parseBinaryExpression 0
+    }
+
+and parseBinaryExpression (parentPrecedence: int) =
+    let rec binaryRight left =
+        par {
+            match! currentKind |> map SyntaxFacts.getBinaryOperatorPrecedence with
+            | currentPrecedence when currentPrecedence > parentPrecedence ->
+                let! operatorToken = nextToken
+                let! right = parseBinaryExpression currentPrecedence
+                return! binaryRight (BinaryExpressionSyntax (left, operatorToken, right))
+            | _ -> return left
+        }
+
+    par {
+        let! unaryOperatorPrecedence = currentKind |> map SyntaxFacts.getUnaryOperatorPrecedence
+        let! left =
+            if unaryOperatorPrecedence <> 0 && unaryOperatorPrecedence > parentPrecedence then
+                pipe2
+                    nextToken
+                    (parseBinaryExpression unaryOperatorPrecedence)
+                    (fun operator operand -> UnaryExpressionSyntax (operator, operand))
+            else
+                parsePrimaryExpression
+        return! binaryRight left
+    }
+
+(*
+while (true)
+{
+    var precedence = Current.Kind.GetBinaryOperatorPrecedence();
+    if (precedence == 0 || precedence <= parentPrecedence)
+        break;
+
+    var operatorToken = NextToken();
+    var right = ParseBinaryExpression(precedence);
+    left = new BinaryExpressionSyntax(_syntaxTree, left, operatorToken, right);
+}
+
+return left;
+*)
+
+and parsePrimaryExpression : Parser<ExpressionSyntax> =
+    par {
+        match! currentKind with
+        | IntLiteralToken ->
+            return! nextToken |> map NumberExpressionSyntax
+        | OpenParenthesisToken ->
+            let! openParenthesis = nextToken
+            let! innerExpression = parseExpression
+            let! closeParenthesis = matchToken CloseParenthesisToken
+            return ParenthesizedExpressionSyntax (openParenthesis, innerExpression, closeParenthesis)
+        | _ -> return! matchToken IntLiteralToken |> map NumberExpressionSyntax
+    }
 
 and syntaxTree : Parser<SyntaxTree> =
     par {

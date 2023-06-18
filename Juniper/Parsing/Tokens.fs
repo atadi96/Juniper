@@ -10,6 +10,7 @@ type Keyword =
     | LetKeyword
     | TypeKeyword
     | AliasKeyword
+    | FunKeyword
 
 type TokenKind =
     | BadToken
