@@ -18,14 +18,21 @@ type UserState =
    
 and FParser<'t> = Parser<'t, UserState>
 
+type LexerMode =
+    | ExpressionMode
+    | TypeMode
+
 module private Lexer =
     type TokenData =
          | TokenKind of TokenKind
          | IntLiteralTokenData of int64
          | BadTokenData of char
+         | BaseTypeKeywordData of Keyword * Ast.BaseTypes
          //| InlineCppTokenData of string
-         //| StringLiteralTokenData of string
+         | StringLiteralTokenData of string
+         | CharacterArrayLiteralTokenData of string
          | IdentifierTokenData of string
+         | TypeVariableTokenData of string
 
     let badToken : FParser<TokenData> =
          fun stream ->
@@ -42,13 +49,65 @@ module private Lexer =
         between (pstring "#") (pstring "#") ((stringsSepBy normalCharSnippet escapedChar))
     *)
 
+    let private parseTrivia (leading: bool) : FParser<SyntaxTrivia list> =
+        let singleLineComment =
+            skipString "//" >>. skipRestOfLine false
+            |> skipped
+            |>> (fun singleLineComment -> SingleLineCommentTrivia, singleLineComment)
+
+        let multiLineComment =
+            skipString "(*" >>. skipCharsTillString "*)" true System.Int32.MaxValue
+            |> skipped
+            |>> (fun multiLineComment -> MultiLineCommentTrivia, multiLineComment)
+
+        let whiteSpaces = many1Chars (anyOf ['\t'; ' ']) |>> fun ws -> WhiteSpaceTrivia, ws
+
+        let lineBreak =
+            skipNewline
+            |> skipped
+            |>> (fun lineBreakText -> LineBreakTrivia, lineBreakText)
+
+        let trivia p =
+            pipe3
+                getPosition
+                p
+                getPosition
+                (fun startPos (triviaKind, text) endPos ->
+                    {
+                        triviaKind = triviaKind
+                        text = text
+                        startPos = startPos
+                        endPos = endPos
+                    }
+                )
+
+        if leading then
+            many (choice [singleLineComment; multiLineComment; whiteSpaces; lineBreak] |> trivia)
+        else
+            manyTill (choice [singleLineComment; multiLineComment; whiteSpaces] |> trivia) lineBreak
+            .>>. opt (lineBreak |> trivia)
+            |>> fun (trivias, optionalLineBreak) ->
+                match optionalLineBreak with
+                | None -> trivias
+                | Some lineBreakFound ->
+                    trivias @ [lineBreakFound]
+
+    let parseLeadingTrivia = parseTrivia true
+
+    let parseTrailingTrivia = parseTrivia false
+
     let private getKeywordOrIdentifierTokenData (text: string) =
         text
         |> SyntaxFacts.getKeyword
-        |> Option.map (KeywordToken >> TokenKind)
+        |> Option.map (fun keyword ->
+            keyword
+            |> SyntaxFacts.getKeywordBaseType
+            |> Option.map (fun baseType -> BaseTypeKeywordData (keyword, baseType))
+            |> Option.defaultValue (TokenKind (KeywordToken keyword))
+        )
         |> Option.defaultValue (IdentifierTokenData text)
 
-    let tokenData : FParser<TokenData> =
+    let tokenData mode : FParser<TokenData> =
         choice
           [
             eof >>% TokenKind EndOfFileToken
@@ -86,18 +145,24 @@ module private Lexer =
             skipChar ':' >>% TokenKind ColonToken
             //skipChar ':' >>. (skipString ":::" >>% TokenKind UnsafeTypeCastToken <|> preturn (TokenKind ColonToken))
 
-            //skipChar ';' >>% TokenKind SemicolonToken
+            skipChar ';' >>% TokenKind SemicolonToken
             //skipString "&&&" >>% TokenKind BitwiseAndToken
             //skipString "^^^" >>% TokenKind BitwiseXorToken
             //skipString "~~~" >>% TokenKind BitwiseNotToken
-            //followedByString "\"" >>. Parse.stringLiteral '"' true |>> StringLiteralTokenData // TODO unterminated string
+
+            followedByString "\"" >>. Parse.stringLiteral '"' true |>> StringLiteralTokenData // TODO unterminated string
+
+            if mode = ExpressionMode then
+                followedByString "\'" >>. Parse.stringLiteral '\'' true |>> CharacterArrayLiteralTokenData // TODO unterminated string
+            else
+                skipChar '\'' >>. Parse.id |>> TypeVariableTokenData
             //followedByString "#" >>. (inlineCppToken |>> InlineCppTokenData)
             
             
             followedBy digit >>. pint64 |>> IntLiteralTokenData
             
             followedBy (asciiLetter <|> pchar '_') >>. Parse.id |>> getKeywordOrIdentifierTokenData
-            // TODO character array literals
+
             badToken
           ]
 
@@ -105,6 +170,14 @@ module private Lexer =
         | BadTokenData c -> BadToken, string c, None
         | IntLiteralTokenData i -> IntLiteralToken, string i, Some (IntValue i)
         | IdentifierTokenData identifierText -> IdentifierToken, identifierText, None
+        | BaseTypeKeywordData (keyword, baseType) ->
+            KeywordToken keyword, (SyntaxFacts.keywordText keyword), Some (BaseTypeValue baseType)
+        | TypeVariableTokenData typeVariableName ->
+            TypeVariableIdentifierToken, "'" + typeVariableName, Some (TypeVariableIdentifierValue typeVariableName)
+        | CharacterArrayLiteralTokenData literal ->
+            CharacterArrayLiteralToken, "'" + literal + "'", Some (TextValue literal)
+        | StringLiteralTokenData literal ->
+            StringLiteralToken, "\"" + literal + "\"", Some (TextValue literal)
         | TokenKind k ->
             match k with
             | EndOfFileToken -> k, char 0 |> string, None
@@ -118,9 +191,6 @@ module private Lexer =
             | EqualsToken -> k, "=", None
             | ColonToken -> k, ":", None
             | KeywordToken keyword -> k, (SyntaxFacts.keywordText keyword), None
-            | BadToken
-            | IdentifierToken
-            | IntLiteralToken -> failwith "already handled"
             | PipeToken -> k, "|", None
             //| BitwiseOrToken
             //| BitwiseXorToken
@@ -137,20 +207,26 @@ module private Lexer =
             //| BitshiftRightToken
             //| BitshiftLeftToken
             //| OpenBraceToken
-            //| CloseBraceToken
+            //BadTokenTriviaraceToken
             //| OpenBracketToken
             //| CloseBracketToken
-            //| SemicolonToken
+            | SemicolonToken -> k, ";", None
             //| UnsafeTypeCastToken
             //| CommaToken
             //| ApostropheToken
             //| ArrowToken
             //| DoubleArrowToken -> k, "?", None
-    let token : FParser<Token> =
+            | BadToken
+            | IdentifierToken
+            | TypeVariableIdentifierToken
+            | CharacterArrayLiteralToken
+            | StringLiteralToken
+            | IntLiteralToken -> failwith "already handled"
+    let token mode : FParser<Token> =
         skipMany (pchar ' ') >>.
         pipe3
             getPosition
-            tokenData
+            (tokenData mode)
             getPosition
             (fun startPos tokenData endPos ->
                 let (kind, text, value) = tokenData |> tokenArgsFromData
@@ -165,16 +241,23 @@ module private Lexer =
 
     let initP : FParser<CharStream<UserState>> = fun stream -> Reply(stream)
 
-   // TODO lexer modes -> separate lexer for expr and types -> solves the issue of type arg vs character array literal; solves issue of pattern _ vs identifier _ ..?
-
-
 type Lexer(streamName: string, text: string) =
+
+    let mutable mode = ExpressionMode
+
+    let token =
+        let expressionToken = Lexer.token ExpressionMode
+        let typeToken = Lexer.token TypeMode
+        fun mode stream ->
+            match mode with
+            | ExpressionMode -> expressionToken stream
+            | TypeMode -> typeToken stream
 
     let (Success (stream, _, _)) = runParserOnString Lexer.initP (UserState.Create()) streamName text
 
     member __.Lex() : Token =
         // TODO return EofToken if the stream is at the end?
-        let reply = Lexer.token stream
+        let reply = token mode stream
         if reply.Status = Ok then
             reply.Result
         else failwith "lexing a token should never fail"
@@ -184,3 +267,14 @@ type Lexer(streamName: string, text: string) =
 
     member __.Position() =
         stream.Position
+
+    member __.SetMode(lexerMode) =
+        mode <- lexerMode
+
+    member __.CurrentMode() = mode
+
+    member this.Peek1() : Token =
+        let currentState = stream.State
+        let token = this.Lex()
+        stream.BacktrackTo currentState
+        token

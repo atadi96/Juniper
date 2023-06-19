@@ -68,8 +68,17 @@ type ParBuilder() =
     member __.Return x = ret x
     member __.Zero() = ret ()
     member __.ReturnFrom x = x
+    member __.Do x = x |> map ignore
 
 let par = ParBuilder()
+
+let lexerMode mode (parser: Parser<_>): Parser<_> =
+    fun (lexer, state) ->
+        let initialMode = lexer.CurrentMode()
+        lexer.SetMode mode
+        let result = parser (lexer, state)
+        lexer.SetMode initialMode
+        result
 
 let pipe2 (p1: Parser<_>) (p2: Parser<_>) f : Parser<_> = fun (lexer,state) ->
     let (x, state') = p1 (lexer,state)
@@ -177,4 +186,8 @@ let ifCurrentKind peekKind parser =
         else
             return None
     }
-        
+    
+let peek1 : Parser<Token> =
+    fun (lexer,state) ->
+        let peekedToken = lexer.Peek1()
+        (peekedToken, state)

@@ -10,6 +10,11 @@ type SeparatedSyntaxList<'TItem> =
 
 and SeparatedNonEmptySyntaxList<'TItem> = SeparatedNonEmptySyntaxList of 'TItem * (Token * 'TItem) list
 
+module SeparatedNonEmprySyntaxList =
+    let prepend (item, sep) (SeparatedNonEmptySyntaxList (firstItem, followingItems)) =
+        SeparatedNonEmptySyntaxList (item, (sep, firstItem) :: followingItems)
+    let singleton item = SeparatedNonEmptySyntaxList (item, [])
+
 type ModuleDefinitionSyntax =
     {
         moduleName: ModuleNameSyntax
@@ -43,7 +48,14 @@ and OpenModulesSyntax =
 and TemplateDeclarationSyntax =
     {
         lessThanSign: Token
-        // TODO
+        typeVariables: SeparatedNonEmptySyntaxList<Token>
+        greaterThanSign: Token
+    }
+and TemplateApplicationSyntax =
+    {
+        lessThanSign: Token
+        templateApplicationTypes: SeparatedNonEmptySyntaxList<TypeExpressionSyntax>
+        // TODO capacities
         greaterThanSign: Token
     }
 and AlgebraicTypeSyntax =
@@ -112,13 +124,19 @@ and DeclarationReferenceSyntax =
 
 and TypeExpressionSyntax =
     | DeclarationReferenceTypeExpression of DeclarationReferenceSyntax
+    | BuiltInTypeExpression of Token
+    | TypeVariableIdentifierTypeExpression of Token
 
 and ExpressionSyntax =
-    | UnitExpression of Token * Token
+    | UnitLiteralExpression of Token * Token
     | UnaryExpressionSyntax of Token * ExpressionSyntax
     | BinaryExpressionSyntax of ExpressionSyntax * Token * ExpressionSyntax
     | NumberExpressionSyntax of Token
     | ParenthesizedExpressionSyntax of Token * ExpressionSyntax * Token
+    | SequenceExpression of Token * SeparatedNonEmptySyntaxList<ExpressionSyntax> * Token
+    | StringLiteralExpressionSyntax of Token
+    | CharacterArrayLiteralExpressionSyntax of Token
+    | DeclarationReferenceExpressionSyntax of DeclarationReferenceSyntax * (TemplateApplicationSyntax option)
     
     
 type ParseError = PE of (FParsec.Position * FParsec.Position * string * (ParseError list))

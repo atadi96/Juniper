@@ -6,7 +6,7 @@ open Tokens
 open Lexer
     
 let rec parseModuleDefinition =
-    par {
+    lexerMode ExpressionMode (par {
         let! moduleName = parseModuleName
         let! declarations =
             manyWhile
@@ -16,7 +16,7 @@ let rec parseModuleDefinition =
             moduleName = moduleName
             declarations = declarations
         }
-    }
+    })
 
 and parseModuleName : Parser<ModuleNameSyntax> =
     par {
@@ -38,10 +38,10 @@ and parseDeclaration : Parser<DeclarationSyntax> =
             let! letDeclaration = parseLetDeclaration
             return LetDeclarationSyntax letDeclaration
         | KeywordToken TypeKeyword ->
-            let! algebraicType = parseAlgebraicType
+            let! algebraicType = lexerMode TypeMode parseAlgebraicType
             return AlgebraicTypeSyntax algebraicType
         | KeywordToken AliasKeyword ->
-            let! alias = parseAlias
+            let! alias = lexerMode TypeMode parseAlias
             return AliasSyntax alias
         | KeywordToken FunKeyword ->
             let! func = parseFunctionDeclaration
@@ -72,13 +72,40 @@ and parseOpenModules : Parser<OpenModulesSyntax> =
         OpenModulesSyntax.Create
 
 and parseTemplateDec : Parser<TemplateDeclarationSyntax> =
-    pipe2
-        (matchToken (LessThanToken))
-        (matchToken (GreaterThanToken))
-        (fun lt gt -> {
-            lessThanSign = lt
-            greaterThanSign = gt
-        })
+    let parseTypeVariableIdentifier =
+        par {
+            match! currentKind with
+            | IdentifierToken ->
+                let! typeVariableIdentifier = matchToken TypeVariableIdentifierToken
+                let! _skip = nextToken
+                return typeVariableIdentifier
+            | _ ->
+                return! matchToken TypeVariableIdentifierToken
+        }
+    lexerMode TypeMode (
+        pipe3
+            (matchToken (LessThanToken))
+            (many1Sep parseTypeVariableIdentifier CommaToken)
+            (matchToken (GreaterThanToken))
+            (fun lt typeVariables gt -> {
+                lessThanSign = lt
+                typeVariables = typeVariables
+                greaterThanSign = gt
+            })
+    )
+
+and parseTemplateApplication : Parser<TemplateApplicationSyntax> =
+    lexerMode TypeMode (
+        pipe3
+            (matchToken LessThanToken)
+            (many1Sep parseTypeExpression CommaToken)
+            (matchToken GreaterThanToken)
+            (fun lt types gt -> {
+                lessThanSign = lt
+                templateApplicationTypes = types
+                greaterThanSign = gt
+            }) 
+    )
 
 and parseAlgebraicType : Parser<AlgebraicTypeSyntax> =
     par {
@@ -88,6 +115,18 @@ and parseAlgebraicType : Parser<AlgebraicTypeSyntax> =
             parseTemplateDec
             |> ifCurrentKind LessThanToken
         let! equals = matchToken EqualsToken
+        let skipUnnecessaryFirstPipe =
+            par {
+                match! currentKind with
+                | PipeToken ->
+                    // if there's an unnecessary pipe token before the first value constructor, skip it
+                    let! _error = matchToken IdentifierToken
+                    let! _skip = nextToken
+                    return ()
+                | _ ->
+                    return ()
+            }
+        do! skipUnnecessaryFirstPipe
         let! valueConstructors =
             many1Sep parseValueConstructor PipeToken
         return {
@@ -136,12 +175,7 @@ and parseLetDeclaration : Parser<LetDeclarationSyntax> =
     par {
         let! letKeyword = matchToken (KeywordToken LetKeyword)
         let! identifier = matchToken IdentifierToken
-        let! optionalType =
-            pipe2
-                (matchToken ColonToken)
-                (parseTypeExpression)
-                (fun colon typeExpression -> colon, typeExpression)
-            |> ifCurrentKind ColonToken
+        let! optionalType = parseOptionalType
         let! equals = matchToken EqualsToken
         let! body = parseExpression
         return {
@@ -165,12 +199,7 @@ and parseFunctionDeclaration : Parser<FunctionDeclarationSyntax> =
             manySep parseIdentifierWithOptionalType CommaToken CloseParenthesisToken
         let! closeParenthesis = matchToken CloseParenthesisToken
         // TODO constraints
-        let! optionalType =
-            pipe2
-                (matchToken ColonToken)
-                parseTypeExpression
-                (fun colon typeExpression -> colon, typeExpression)
-            |> ifCurrentKind ColonToken
+        let! optionalType = parseOptionalType
         let! equal = matchToken EqualsToken
         let! functionBody = parseExpression
         return {
@@ -189,12 +218,7 @@ and parseFunctionDeclaration : Parser<FunctionDeclarationSyntax> =
 and parseIdentifierWithOptionalType : Parser<IdentifierWithOptionalType> =
     par {
         let! identifier = matchToken IdentifierToken
-        let! optionalType =
-            pipe2
-                (matchToken ColonToken)
-                parseTypeExpression
-                (fun colon typeExpression -> colon, typeExpression)
-            |> ifCurrentKind ColonToken
+        let! optionalType = parseOptionalType
         return {
             identifier = identifier
             optionalType = optionalType
@@ -224,7 +248,26 @@ and parseDeclarationReference : Parser<DeclarationReferenceSyntax> =
     }
 
 and parseTypeExpression : Parser<TypeExpressionSyntax> =
-    parseDeclarationReference |> map DeclarationReferenceTypeExpression
+    lexerMode TypeMode (par {
+        match! currentKind with
+        | IdentifierToken ->
+            return! parseDeclarationReference |> map DeclarationReferenceTypeExpression
+        | KeywordToken keyword ->
+            match keyword |> SyntaxFacts.getKeywordBaseType with
+            | Some baseTy ->
+                return! nextToken |> map BuiltInTypeExpression
+            | None ->
+                let! token = matchToken (KeywordToken UnitKeyword)
+                let! _skip = nextToken
+                return token |> BuiltInTypeExpression
+        | TypeVariableIdentifierToken ->
+            return! nextToken |> map TypeVariableIdentifierTypeExpression
+        | _ ->
+            let! unitType = matchToken (KeywordToken UnitKeyword)
+            let! _skip = nextToken
+            return unitType |> BuiltInTypeExpression
+    })
+    
 
 and parseExpression : Parser<ExpressionSyntax> =
     par {
@@ -275,15 +318,50 @@ return left;
 and parsePrimaryExpression : Parser<ExpressionSyntax> =
     par {
         match! currentKind with
+        | IdentifierToken ->
+            let! declarationReference = parseDeclarationReference
+            let! optionalTemplateApplication =
+                parseTemplateApplication
+                |> ifCurrentKind LessThanToken
+            return DeclarationReferenceExpressionSyntax (declarationReference, optionalTemplateApplication)
         | IntLiteralToken ->
             return! nextToken |> map NumberExpressionSyntax
+        | StringLiteralToken ->
+            return! nextToken |> map StringLiteralExpressionSyntax
+        | CharacterArrayLiteralToken ->
+            return! nextToken |> map CharacterArrayLiteralExpressionSyntax
         | OpenParenthesisToken ->
             let! openParenthesis = nextToken
-            let! innerExpression = parseExpression
-            let! closeParenthesis = matchToken CloseParenthesisToken
-            return ParenthesizedExpressionSyntax (openParenthesis, innerExpression, closeParenthesis)
+            match! currentKind with
+            | CloseParenthesisToken ->
+                let! closeParenthesis = nextToken
+                return UnitLiteralExpression (openParenthesis, closeParenthesis)
+            | _ ->
+                let! innerExpression = parseExpression
+                match! currentKind with
+                | SemicolonToken ->
+                    let! firstSemicolon = nextToken
+                    let! rest = many1Sep parseExpression SemicolonToken
+                    let sequence =
+                        rest
+                        |> SeparatedNonEmprySyntaxList.prepend (innerExpression, firstSemicolon)
+                    let! closeParenthesis = matchToken CloseParenthesisToken
+                    return SequenceExpression(openParenthesis, sequence, closeParenthesis)
+                | CloseParenthesisToken
+                | _ ->
+                    let! closeParenthesis = matchToken CloseParenthesisToken
+                    return ParenthesizedExpressionSyntax (openParenthesis, innerExpression, closeParenthesis)
         | _ -> return! matchToken IntLiteralToken |> map NumberExpressionSyntax
     }
+
+and parseOptionalType : Parser<(Token * TypeExpressionSyntax) option> =
+    lexerMode TypeMode (
+        pipe2
+            (matchToken ColonToken)
+            parseTypeExpression
+            (fun colon typeExpression -> colon, typeExpression)
+        |> ifCurrentKind ColonToken
+    )
 
 and syntaxTree : Parser<SyntaxTree> =
     par {

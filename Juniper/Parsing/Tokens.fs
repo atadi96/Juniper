@@ -1,8 +1,10 @@
 module Parsing.Tokens
 
 type TokenValue =
-    //| StringValue of string
+    | TextValue of string
     | IntValue of int64
+    | BaseTypeValue of Ast.BaseTypes
+    | TypeVariableIdentifierValue of string
 
 type Keyword =
     | ModuleKeyword
@@ -11,6 +13,21 @@ type Keyword =
     | TypeKeyword
     | AliasKeyword
     | FunKeyword
+    | UInt8Keyword
+    | UInt16Keyword
+    | UInt32Keyword
+    | UInt64Keyword
+    | Int8Keyword
+    | Int16Keyword
+    | Int32Keyword
+    | Int64Keyword
+    | BoolKeyword
+    | UnitKeyword
+    | FloatKeyword
+    | DoubleKeyword
+    | PointerKeyword
+    | StringKeyword
+    | RawPointerKeyword
 
 type TokenKind =
     | BadToken
@@ -42,16 +59,35 @@ type TokenKind =
     //| OpenBracketToken
     //| CloseBracketToken
     | ColonToken
-    //| SemicolonToken
+    | SemicolonToken
     //| UnsafeTypeCastToken
     //| ApostropheToken
     //| InlineCppToken
     //| ArrowToken
     //| DoubleArrowToken
-    //| StringLiteralToken
+    | StringLiteralToken
+    | CharacterArrayLiteralToken
     | CommaToken
     | IntLiteralToken
     | IdentifierToken
+    | TypeVariableIdentifierToken
+
+
+
+type SyntaxTriviaKind =
+    | SingleLineCommentTrivia
+    | MultiLineCommentTrivia
+    | WhiteSpaceTrivia
+    | BadTokenTrivia
+    | LineBreakTrivia
+
+type SyntaxTrivia =
+    {
+        triviaKind: SyntaxTriviaKind
+        text: string
+        startPos: FParsec.Position
+        endPos: FParsec.Position
+    }
 
 type Token =
     {
