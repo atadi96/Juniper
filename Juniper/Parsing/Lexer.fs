@@ -28,7 +28,7 @@ module private Lexer =
          | IntLiteralTokenData of int64
          | BadTokenData of char
          | BaseTypeKeywordData of Keyword * Ast.BaseTypes
-         //| InlineCppTokenData of string
+         | InlineCppTokenData of string
          | StringLiteralTokenData of string
          | CharacterArrayLiteralTokenData of string
          | IdentifierTokenData of string
@@ -39,15 +39,26 @@ module private Lexer =
              stream.UserState <-
                  stream
                      .UserState
-                     .PrependError(stream, sprintf "unexpected character %c" (stream.Peek()))
+                     .PrependError(stream, sprintf "Unexpected character %c" (stream.Peek()))
 
              (anyChar |>> BadTokenData) stream
-    (*
-    let inlineCppToken : Parser<string> =
+    
+    let inlineCppToken : FParser<string> =
         let normalCharSnippet = manySatisfy (fun c -> c <> '\\' && c <> '#')
         let escapedChar = pstring "\\" >>. (anyOf "\\#" |>> string)
         between (pstring "#") (pstring "#") ((stringsSepBy normalCharSnippet escapedChar))
-    *)
+
+    let private reportUnterminated name ctor (p: FParser<_>): FParser<_> =
+        fun stream ->
+            let initialState = stream.State
+            let reply = p stream
+            if reply.Status = FatalError then
+                stream.UserState <-
+                    stream.UserState.PrependError(stream, sprintf "Unterminated %s" name)
+                let text = stream.ReadFrom(initialState, false)
+                Reply(ctor text)
+            else
+                Reply(reply.Status, ctor reply.Result, reply.Error)
 
     let private parseTrivia (leading: bool) : FParser<SyntaxTrivia list> =
         let singleLineComment =
@@ -55,9 +66,11 @@ module private Lexer =
             |> skipped
             |>> (fun singleLineComment -> SingleLineCommentTrivia, singleLineComment)
 
-        let multiLineComment =
-            skipString "(*" >>. skipCharsTillString "*)" true System.Int32.MaxValue
+        let multiLineComment: FParser<_> =
+            skipString "(*"
+            >>. (skipCharsTillString "*)" false System.Int32.MaxValue .>> skipString "*)" |> Parse.fatalizeAnyError)
             |> skipped
+            |> reportUnterminated "multi-line comment" id
             |>> (fun multiLineComment -> MultiLineCommentTrivia, multiLineComment)
 
         let whiteSpaces = many1Chars (anyOf ['\t'; ' ']) |>> fun ws -> WhiteSpaceTrivia, ws
@@ -84,7 +97,7 @@ module private Lexer =
         if leading then
             many (choice [singleLineComment; multiLineComment; whiteSpaces; lineBreak] |> trivia)
         else
-            manyTill (choice [singleLineComment; multiLineComment; whiteSpaces] |> trivia) lineBreak
+            many (choice [singleLineComment; multiLineComment; whiteSpaces] |> trivia)
             .>>. opt (lineBreak |> trivia)
             |>> fun (trivias, optionalLineBreak) ->
                 match optionalLineBreak with
@@ -150,13 +163,14 @@ module private Lexer =
             //skipString "^^^" >>% TokenKind BitwiseXorToken
             //skipString "~~~" >>% TokenKind BitwiseNotToken
 
-            followedByString "\"" >>. Parse.stringLiteral '"' true |>> StringLiteralTokenData // TODO unterminated string
+            followedByString "\"" >>. (Parse.stringLiteral '"' true |> Parse.fatalizeAnyError) |> reportUnterminated "string literal" StringLiteralTokenData
 
             if mode = ExpressionMode then
-                followedByString "\'" >>. Parse.stringLiteral '\'' true |>> CharacterArrayLiteralTokenData // TODO unterminated string
+                followedByString "\'" >>. (Parse.stringLiteral '\'' true |> Parse.fatalizeAnyError) |> reportUnterminated "character array literal" CharacterArrayLiteralTokenData
             else
                 skipChar '\'' >>. Parse.id |>> TypeVariableTokenData
-            //followedByString "#" >>. (inlineCppToken |>> InlineCppTokenData)
+            
+            followedByString "#" >>. (inlineCppToken |> Parse.fatalizeAnyError) |> reportUnterminated "inline C++ code" InlineCppTokenData
             
             
             followedBy digit >>. pint64 |>> IntLiteralTokenData
@@ -178,6 +192,8 @@ module private Lexer =
             CharacterArrayLiteralToken, "'" + literal + "'", Some (TextValue literal)
         | StringLiteralTokenData literal ->
             StringLiteralToken, "\"" + literal + "\"", Some (TextValue literal)
+        | InlineCppTokenData cppCode ->
+            InlineCppToken, "#" + cppCode + "#", Some (InlineCppCodeValue cppCode)
         | TokenKind k ->
             match k with
             | EndOfFileToken -> k, char 0 |> string, None
@@ -221,14 +237,16 @@ module private Lexer =
             | TypeVariableIdentifierToken
             | CharacterArrayLiteralToken
             | StringLiteralToken
+            | InlineCppToken
             | IntLiteralToken -> failwith "already handled"
     let token mode : FParser<Token> =
-        skipMany (pchar ' ') >>.
-        pipe3
+        pipe5
+            parseLeadingTrivia
             getPosition
             (tokenData mode)
             getPosition
-            (fun startPos tokenData endPos ->
+            parseTrailingTrivia
+            (fun leadingTrivia startPos tokenData endPos trailingTrivia ->
                 let (kind, text, value) = tokenData |> tokenArgsFromData
                 {
                     start = startPos
@@ -236,6 +254,8 @@ module private Lexer =
                     end_ = endPos
                     value = value
                     tokenKind = kind
+                    leadingTrivia = leadingTrivia
+                    trailingTrivia = trailingTrivia
                 }
             )
 
@@ -260,7 +280,7 @@ type Lexer(streamName: string, text: string) =
         let reply = token mode stream
         if reply.Status = Ok then
             reply.Result
-        else failwith "lexing a token should never fail"
+        else failwithf "lexing a token should never fail - '%c' %A" (stream.Peek()) (stream.Position)
 
     member __.GetErrors() =
         stream.UserState.parserErrors |> List.rev |> List.map (fun (a,_,_) -> a)

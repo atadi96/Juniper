@@ -20,12 +20,32 @@ let errors : Parser<ParseError list * (FParsec.Position * string) list> =
     
 let rec nextToken : Parser<Token> =
     fun (lexer, state) ->
-        let newToken = lexer.Lex()
-        if newToken.tokenKind = BadToken then
-            nextToken (lexer, state)
-        else
-            let (ParserState(currentToken, errors)) = state
-            currentToken, ParserState (newToken, errors)
+        let rec getNextGoodToken accumulatedLeadingTrivia =
+            let newToken = lexer.Lex()
+            if newToken.tokenKind = BadToken then
+                let currentTrivia =
+                    seq {
+                        yield! newToken.leadingTrivia
+                        yield {
+                            triviaKind = BadTokenTrivia
+                            startPos = newToken.start
+                            endPos = newToken.end_
+                            text = newToken.text |> Option.defaultValue "" // TODO check if SyntaxTrivia.text should be nullable?
+                        }
+                        yield! newToken.trailingTrivia
+                    }
+                getNextGoodToken (Seq.concat [accumulatedLeadingTrivia; currentTrivia])
+            else
+                let newToken =
+                    match (accumulatedLeadingTrivia |> List.ofSeq) with
+                    | [] -> newToken
+                    | leadingTrivia ->
+                        { newToken with
+                            leadingTrivia = leadingTrivia @ newToken.leadingTrivia
+                        }
+                let (ParserState(currentToken, errors)) = state
+                currentToken, ParserState (newToken, errors)
+        getNextGoodToken []
 
 let matchToken (tokenKind: TokenKind) : Parser<Token> =
     fun (lexer, state) ->
@@ -41,8 +61,10 @@ let matchToken (tokenKind: TokenKind) : Parser<Token> =
                     value = None
                     text = None
                     tokenKind = tokenKind
+                    leadingTrivia = []
+                    trailingTrivia = []
                 }
-            let newError = PE (currentToken.start, currentToken.end_, sprintf "unexpected token <%A>, expecting <%A>" currentToken.tokenKind tokenKind, [])
+            let newError = PE (currentToken.start, currentToken.end_, sprintf "Unexpected token <%A>, expecting <%A>" currentToken.tokenKind tokenKind, [])
             let newErrors =
                 match errors with
                 | PE (startPos, endPos, text, children) :: rest when startPos = currentToken.start && endPos = currentToken.end_ ->

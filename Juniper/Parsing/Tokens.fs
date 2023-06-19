@@ -5,6 +5,7 @@ type TokenValue =
     | IntValue of int64
     | BaseTypeValue of Ast.BaseTypes
     | TypeVariableIdentifierValue of string
+    | InlineCppCodeValue of string
 
 type Keyword =
     | ModuleKeyword
@@ -62,7 +63,7 @@ type TokenKind =
     | SemicolonToken
     //| UnsafeTypeCastToken
     //| ApostropheToken
-    //| InlineCppToken
+    | InlineCppToken
     //| ArrowToken
     //| DoubleArrowToken
     | StringLiteralToken
@@ -96,6 +97,6 @@ type Token =
         start: FParsec.Position
         end_: FParsec.Position
         tokenKind: TokenKind
-        //leading trivia
-        //ending trivia
+        leadingTrivia: SyntaxTrivia list
+        trailingTrivia: SyntaxTrivia list
     }
