@@ -30,6 +30,10 @@ type Keyword =
     | StringKeyword
     | RawPointerKeyword
     | PackedKeyword
+    | NotKeyword
+    | FnKeyword
+    | EndKeyword
+    | RefKeyword
 
 type TokenKind =
     | BadToken
@@ -45,7 +49,7 @@ type TokenKind =
     //| BitwiseOrToken
     //| BitwiseXorToken
     //| BitwiseAndToken
-    //| BitwiseNotToken
+    | BitwiseNotToken
     //| EqualsEqualsToken
     | EqualsToken
     //| BangEqualsToken
@@ -53,7 +57,7 @@ type TokenKind =
     //| LessThanOrEqualToken
     | GreaterThanToken
     //| GreaterThanOrEqualToken
-    //| BangToken
+    | BangToken
     //| BitshiftRightToken
     //| BitshiftLeftToken
     | OpenBraceToken

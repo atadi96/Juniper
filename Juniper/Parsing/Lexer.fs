@@ -139,6 +139,7 @@ module private Lexer =
             skipChar '=' >>% TokenKind EqualsToken
             //skipChar '=' >>. choice [ skipChar '=' >>% TokenKind EqualsEqualsToken; skipChar '>' >>% TokenKind DoubleArrowToken; preturn (TokenKind EqualsToken) ]
 
+            skipChar '!' >>% TokenKind BangToken
             //skipChar '!' >>. (skipChar '=' >>% TokenKind BangEqualsToken <|> preturn (TokenKind BangToken))
 
             skipChar '|' >>% TokenKind PipeToken
@@ -160,7 +161,7 @@ module private Lexer =
             skipChar ';' >>% TokenKind SemicolonToken
             //skipString "&&&" >>% TokenKind BitwiseAndToken
             //skipString "^^^" >>% TokenKind BitwiseXorToken
-            //skipString "~~~" >>% TokenKind BitwiseNotToken
+            skipString "~~~" >>% TokenKind BitwiseNotToken
 
             followedByString "\"" >>. (Parse.stringLiteral '"' true |> Parse.fatalizeAnyError) |> reportUnterminated "string literal" StringLiteralTokenData
 
@@ -210,7 +211,7 @@ module private Lexer =
             //| BitwiseOrToken
             //| BitwiseXorToken
             //| BitwiseAndToken
-            //| BitwiseNotToken
+            | BitwiseNotToken -> k, "~~~", None
             //| EqualsEqualsToken
             //| EqualsToken
             //| BangEqualsToken
@@ -218,7 +219,7 @@ module private Lexer =
             //| LessThanOrEqualToken
             | GreaterThanToken -> k, ">", None
             //| GreaterThanOrEqualToken
-            //| BangToken
+            | BangToken -> k, "!", None
             //| BitshiftRightToken
             //| BitshiftLeftToken
             | OpenBraceToken -> k, "{", None
@@ -227,7 +228,6 @@ module private Lexer =
             | CloseBracketToken -> k, "]", None
             | SemicolonToken -> k, ";", None
             //| UnsafeTypeCastToken
-            //| CommaToken
             //| ApostropheToken
             | ArrowToken -> k, "->", None
             //| DoubleArrowToken -> k, "?", None

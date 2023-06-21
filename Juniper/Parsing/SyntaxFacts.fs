@@ -12,7 +12,10 @@ let getUnaryOperatorPrecedence (unaryOp: UnaryOps) =
 *)
 let getUnaryOperatorPrecedence (tokenKind: TokenKind) =
     match tokenKind with
-    | MinusToken -> 12
+    | MinusToken
+    | KeywordToken RefKeyword
+    | BitwiseNotToken
+    | BangToken -> 12
     | _ -> 0
 (*
 let getBinaryOperatorPrecedence (binaryOp: BinaryOps) =
@@ -54,6 +57,10 @@ let getKeyword (text: string) =
     | "string" -> Some StringKeyword
     | "rawpointer" -> Some RawPointerKeyword
     | "packed" -> Some PackedKeyword
+    | "not" -> Some NotKeyword
+    | "fn" -> Some FnKeyword
+    | "end" -> Some EndKeyword
+    | "ref" -> Some RefKeyword
     | _ -> None
 
 let keywordText (keyword: Keyword) =
@@ -80,6 +87,10 @@ let keywordText (keyword: Keyword) =
     | StringKeyword -> "string"
     | RawPointerKeyword -> "rawpointer"
     | PackedKeyword -> "packed"
+    | NotKeyword -> "not"
+    | FnKeyword -> "fn"
+    | EndKeyword -> "end"
+    | RefKeyword -> "ref"
 
 let getKeywordBaseType (keyword: Keyword) =
     match keyword with

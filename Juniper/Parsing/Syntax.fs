@@ -5,6 +5,9 @@ open SyntaxTree
 open Tokens
 open Lexer
     
+type ExpressionLeftRecursion =
+    | FunctionCallLeftRecursion of Token * SeparatedSyntaxList<ExpressionSyntax> * Token
+
 let rec parseModuleDefinition =
     lexerMode ExpressionMode (par {
         let! moduleName = parseModuleName
@@ -29,6 +32,16 @@ and parseModuleName : Parser<ModuleNameSyntax> =
     }
 
 and parseDeclaration : Parser<DeclarationSyntax> =
+    let isDeclarationStart tokenKind =
+        match tokenKind with
+        | KeywordToken OpenKeyword
+        | KeywordToken LetKeyword
+        | KeywordToken TypeKeyword
+        | KeywordToken AliasKeyword
+        | KeywordToken FunKeyword
+        | InlineCppToken -> true
+        | _ -> false
+
     par {
         match! currentKind with
         | KeywordToken OpenKeyword ->
@@ -50,11 +63,17 @@ and parseDeclaration : Parser<DeclarationSyntax> =
             let! inlineCpp = nextToken
             return InlineCppDeclarationSyntax inlineCpp
         | _ ->
-            // token is not recognized as top level declaration: skip it
+            // token is not recognized as top level declaration: skip to the next possible declaration
             // give a syntax error
             let! _ = matchToken (KeywordToken LetKeyword)
-            // and consume the unexpected token
-            let! _ = nextToken // TODO actual skip when implemented
+            // and skip all tokens until we find a token that can start a declaration, or reach the end of the token
+            let tokenKindShouldBeSkipped tokenKind =
+                tokenKind <> EndOfFileToken && not (tokenKind |> isDeclarationStart)
+
+            let! _ = manyWhile (currentKind |> map tokenKindShouldBeSkipped) skipSilent
+
+            // TODO another recovery tactic: if we find a = we can try to parse an expression or a type, though which one I don't know
+
             // and try again if it's not the end of the file
             match! currentKind with
             | EndOfFileToken ->
@@ -80,7 +99,7 @@ and parseTemplateDec : Parser<TemplateDeclarationSyntax> =
             match! currentKind with
             | IdentifierToken ->
                 let! typeVariableIdentifier = matchToken TypeVariableIdentifierToken
-                let! _skip = nextToken
+                let! () = skipSilent
                 return typeVariableIdentifier
             | _ ->
                 return! matchToken TypeVariableIdentifierToken
@@ -124,8 +143,7 @@ and parseAlgebraicType : Parser<AlgebraicTypeSyntax> =
                 | PipeToken ->
                     // if there's an unnecessary pipe token before the first value constructor, skip it
                     let! _error = matchToken IdentifierToken
-                    let! _skip = nextToken
-                    return ()
+                    do! skipSilent
                 | _ ->
                     return ()
             }
@@ -358,11 +376,11 @@ and parseTypeExpression : Parser<TypeExpressionSyntax> =
                 return! nextToken |> map BuiltInTypeExpression
             | None ->
                 let! token = matchToken (KeywordToken UnitKeyword)
-                let! _skip = nextToken // TODO actual skipping, once implemented
+                let! () = skipSilent
                 return token |> BuiltInTypeExpression
         | _ ->
             let! unitType = matchToken (KeywordToken UnitKeyword)
-            //let! _skip = nextToken // this hurts recovery from e.g. "alias a = { a: a; a: }" so let's turn it off for now? idk why it was added
+            //let! _skip = skipSilent // this hurts recovery from e.g. "alias a = { a: a; a: }" so let's turn it off for now? idk why it was added
             return unitType |> BuiltInTypeExpression
     })
     
@@ -371,7 +389,8 @@ and parseExpression : Parser<ExpressionSyntax> =
     par {
         match! currentKind with
         // | statements?
-        | _ -> return! parseBinaryExpression 0
+        | _ ->
+            return! parseBinaryExpression 0
     }
 
 and parseBinaryExpression (parentPrecedence: int) =
@@ -414,6 +433,18 @@ return left;
 *)
 
 and parsePrimaryExpression : Parser<ExpressionSyntax> =
+    let tryParseOneLeftRecursiveTerm: Parser<ExpressionLeftRecursion option> =
+        par {
+            match! currentKind with
+            | OpenParenthesisToken ->
+                let! openParenthesis = nextToken
+                let! arguments = manySep parseExpression CommaToken CloseParenthesisToken
+                let! closeParenthesis = matchToken CloseParenthesisToken
+                let leftRecursion = FunctionCallLeftRecursion (openParenthesis, arguments, closeParenthesis)
+                return Some leftRecursion
+            | _ ->
+                return None
+        }
     par {
         match! currentKind with
         | IdentifierToken ->
@@ -451,6 +482,36 @@ and parsePrimaryExpression : Parser<ExpressionSyntax> =
                     return ParenthesizedExpressionSyntax (openParenthesis, innerExpression, closeParenthesis)
         | InlineCppToken ->
             return! matchToken InlineCppToken |> map InlineCppExpressionSyntax
+        | KeywordToken LetKeyword ->
+            let! letKeyword = nextToken
+            let! pattern = parsePattern
+            let! equals = matchToken EqualsToken
+            let! body = parseExpression
+            return LetExpression {
+                letKeyword = letKeyword
+                pattern = pattern
+                equals = equals
+                body = body
+            }
+        | KeywordToken FnKeyword ->
+            let! fnKeyword = nextToken
+            let! openParenthesis = matchToken OpenParenthesisToken
+            let! arguments = manySep parseIdentifierWithOptionalType CommaToken CloseParenthesisToken
+            let! closeParenthesis = matchToken CloseParenthesisToken
+            let! optionalReturnType = parseOptionalType
+            let! arrow = matchToken ArrowToken
+            let! bodyExpression = parseExpression
+            let! endKeyword = matchToken (KeywordToken EndKeyword)
+            return LambdaExpression {
+                fnKeyword = fnKeyword
+                openParenthesis = openParenthesis
+                lambdaArguments = arguments
+                closeParenthesis = closeParenthesis
+                optionalReturnType = optionalReturnType
+                arrow = arrow
+                lambdaBodyExpression = bodyExpression
+                endKeyword = endKeyword
+            }
         (*
         | OpenBracketToken ->
             let! openBracket = nextToken
@@ -461,6 +522,26 @@ and parsePrimaryExpression : Parser<ExpressionSyntax> =
         | _ ->
             return! matchToken IntLiteralToken |> map NumberExpressionSyntax
     }
+    |> fun primaryExpressionParser ->
+        par {
+            let! expression = primaryExpressionParser
+            let! leftRecursion = many tryParseOneLeftRecursiveTerm
+            return
+                leftRecursion
+                |> List.fold (fun exp lRec ->
+                    match lRec with
+                    | FunctionCallLeftRecursion (openParens, args, closeParens) ->
+                        FunctionCallExpression {
+                            functionExpression = exp
+                            openParenthesis = openParens
+                            functionCallArguments = args
+                            closeParenthesis = closeParens
+                        }
+                ) expression
+        }
+
+and parsePattern : Parser<PatternSyntax> =
+    matchToken IdentifierToken |> map VariablePattern
 
 and parseIdentifierWithType : Parser<IdentifierWithType> =
     pipe3
@@ -495,6 +576,6 @@ and syntaxTree : Parser<SyntaxTree> =
 let parse streamName text =
     let lexer = Lexer(streamName, text)
     let noToken = Unchecked.defaultof<Token>
-    let (_noToken, initialState) = nextToken (lexer, ParserState(noToken, []))
+    let (_noToken, initialState) = nextToken (lexer, ParserState(noToken, [], []))
     let (result, _) = syntaxTree (lexer, initialState)
     result

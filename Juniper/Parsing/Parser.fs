@@ -4,57 +4,70 @@ open Tokens
 open Lexer
 open SyntaxTree
 
-type ParserState = ParserState of Token * (ParseError list)
+type ParserState = ParserState of Token * (ParseError list) * Token list
 
 type Parser<'a> = ((Lexer * ParserState) -> 'a * ParserState)
 
 let current : Parser<Token> = fun (_lexer,state) ->
-    let (ParserState(currentToken, _)) = state 
+    let (ParserState(currentToken, _, _)) = state 
     currentToken, state
+
+let private convertTokenToTrivia (token: Token) =
+    seq {
+        yield! token.leadingTrivia
+        yield {
+            triviaKind = BadTokenTrivia
+            startPos = token.start
+            endPos = token.end_
+            text = token.text |> Option.defaultValue "" // TODO check if SyntaxTrivia.text should be nullable?
+        }
+        yield! token.trailingTrivia
+    }
 
 let errors : Parser<ParseError list * (FParsec.Position * string) list> =
     fun (lexer, state) ->
         let lexErrors = lexer.GetErrors()
-        let (ParserState (_, errors)) = state
+        let (ParserState (_, errors, _)) = state
         (errors |> List.rev, lexErrors), state
-    
+
 let rec nextToken : Parser<Token> =
-    // TODO if we *SKIP* a token, it needs to be added to following token's leading trivia!!!
     fun (lexer, state) ->
-        let rec getNextGoodToken accumulatedLeadingTrivia =
+        let rec getNextGoodToken accumulatedSkippedTokens =
             let newToken = lexer.Lex()
             if newToken.tokenKind = BadToken then
-                let currentTrivia =
-                    seq {
-                        yield! newToken.leadingTrivia
-                        yield {
-                            triviaKind = BadTokenTrivia
-                            startPos = newToken.start
-                            endPos = newToken.end_
-                            text = newToken.text |> Option.defaultValue "" // TODO check if SyntaxTrivia.text should be nullable?
-                        }
-                        yield! newToken.trailingTrivia
-                    }
-                getNextGoodToken (Seq.concat [accumulatedLeadingTrivia; currentTrivia])
+                getNextGoodToken (newToken :: accumulatedSkippedTokens)
             else
                 let newToken =
-                    match (accumulatedLeadingTrivia |> List.ofSeq) with
+                    match accumulatedSkippedTokens with
                     | [] -> newToken
-                    | leadingTrivia ->
+                    | skippedTokens ->
+                        let leadingTrivia =
+                            skippedTokens
+                            |> Seq.rev
+                            |> Seq.collect convertTokenToTrivia
+                            |> Seq.toList
                         { newToken with
                             leadingTrivia = leadingTrivia @ newToken.leadingTrivia
                         }
-                let (ParserState(currentToken, errors)) = state
-                currentToken, ParserState (newToken, errors)
-        getNextGoodToken []
+                let (ParserState(currentToken, errors, _)) = state
+                currentToken, ParserState (newToken, errors, [])
+
+        let (ParserState (_, _, skippedTokens)) = state
+        getNextGoodToken skippedTokens
+        
+let skipSilent : Parser<unit> =
+    fun (lexer, ParserState(currentToken, errors, skippedTokens)) ->
+        let (_currentToken, state) =
+            nextToken (lexer, ParserState(currentToken, errors, currentToken :: skippedTokens))
+        (), state
 
 let matchToken (tokenKind: TokenKind) : Parser<Token> =
     fun (lexer, state) ->
-        let (ParserState (currentToken, _)) = state
+        let (ParserState (currentToken, _, _)) = state
         if currentToken.tokenKind = tokenKind then
             nextToken (lexer, state)
         else
-            let (ParserState (_, errors)) = state
+            let (ParserState (_, errors, skippedTokens)) = state
             let matchedToken =
                 {
                     start = currentToken.start
@@ -72,7 +85,13 @@ let matchToken (tokenKind: TokenKind) : Parser<Token> =
                     PE (startPos, endPos, text, newError :: children) :: rest
                 | _ -> newError :: errors
                         
-            matchedToken, ParserState (currentToken, newErrors)
+            matchedToken, ParserState (currentToken, newErrors, skippedTokens)
+
+let customError start end_ text: Parser<unit> =
+    fun (_lexer,ParserState (currentToken, errors, skippedTokens)) ->
+        let newError = PE (start, end_, text, [])
+        let newErrors = newError :: errors
+        (), ParserState (currentToken, newErrors, skippedTokens)
 
 let map f (par: Parser<_>): Parser<_> =
     fun (lexer, state) ->
@@ -142,6 +161,17 @@ let currentKind : Parser<TokenKind> =
     current
     |> bind (fun x -> ret x.tokenKind)
             
+let many (item: Parser<_ option>): Parser<_ list> =
+    let rec manyInner (lexer, state) =
+        let (current, state') = item (lexer,state)
+        match current with
+        | None -> [], state'
+        | Some parsedCurrent ->
+            let (rest, state'') = manyInner (lexer, state')
+            parsedCurrent :: rest, state''
+
+    manyInner
+        
             
 let manySep (item: Parser<_>) (sepToken) (closeToken): Parser<SeparatedSyntaxList<_>> =
     let rec nextItemParser (lexer: Lexer,parserState : ParserState) = 

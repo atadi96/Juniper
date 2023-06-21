@@ -151,6 +151,7 @@ and IdentifierWithType =
 and ClosureOfFunctionSyntax =
     | ClosureTypeExpression of ClosureTypeExpressionSyntax
     | ClosureTypeVariable of Token
+
 and RecordTypeExpressionSyntax =
     {
         packed: Token option
@@ -167,6 +168,34 @@ and TypeExpressionSyntax =
     | ParenthesizedTypeExpressionSyntax of Token * TypeExpressionSyntax * Token
     | RecordTypeExpression of RecordTypeExpressionSyntax
 
+and FunctionCallExpressionSyntax =
+    {
+        functionExpression: ExpressionSyntax
+        openParenthesis: Token
+        functionCallArguments: SeparatedSyntaxList<ExpressionSyntax>
+        closeParenthesis: Token
+    }
+
+and LetExpressionSyntax =
+    {
+        letKeyword: Token
+        pattern: PatternSyntax
+        equals: Token
+        body: ExpressionSyntax
+    }
+
+and LambdaExpressionSyntax =
+    {
+        fnKeyword: Token
+        openParenthesis: Token
+        lambdaArguments: SeparatedSyntaxList<IdentifierWithOptionalType>
+        closeParenthesis: Token
+        optionalReturnType: (Token * TypeExpressionSyntax) option
+        arrow: Token
+        lambdaBodyExpression: ExpressionSyntax
+        endKeyword: Token
+    }
+
 and ExpressionSyntax =
     | UnitLiteralExpression of Token * Token
     | UnaryExpressionSyntax of Token * ExpressionSyntax
@@ -178,8 +207,13 @@ and ExpressionSyntax =
     | CharacterArrayLiteralExpressionSyntax of Token
     | DeclarationReferenceExpressionSyntax of DeclarationReferenceSyntax * (TemplateApplicationSyntax option)
     | InlineCppExpressionSyntax of Token
+    | FunctionCallExpression of FunctionCallExpressionSyntax
+    | LetExpression of LetExpressionSyntax
+    | LambdaExpression of LambdaExpressionSyntax
     
-    
+and PatternSyntax =
+    | VariablePattern of Token
+
 type ParseError = PE of (FParsec.Position * FParsec.Position * string * (ParseError list))
 
 type SyntaxTree =
