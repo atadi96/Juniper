@@ -46,12 +46,15 @@ and parseDeclaration : Parser<DeclarationSyntax> =
         | KeywordToken FunKeyword ->
             let! func = parseFunctionDeclaration
             return FunctionDeclarationSyntax func
+        | InlineCppToken ->
+            let! inlineCpp = nextToken
+            return InlineCppDeclarationSyntax inlineCpp
         | _ ->
             // token is not recognized as top level declaration: skip it
             // give a syntax error
             let! _ = matchToken (KeywordToken LetKeyword)
             // and consume the unexpected token
-            let! _ = nextToken
+            let! _ = nextToken // TODO actual skip when implemented
             // and try again if it's not the end of the file
             match! currentKind with
             | EndOfFileToken ->
@@ -247,24 +250,119 @@ and parseDeclarationReference : Parser<DeclarationReferenceSyntax> =
             }
     }
 
+and parseClosureTypeExpression : Parser<ClosureTypeExpressionSyntax> =
+    par {
+        let! openPipe = matchToken PipeToken
+        let! capturedVariables =
+            manySep parseIdentifierWithType SemicolonToken PipeToken
+        let! closePipe = matchToken PipeToken
+        return {
+            openPipe = openPipe
+            capturedVariables = capturedVariables
+            closePipe = closePipe
+        }
+    }
+
+and parseFunctionTypeExpressionStartingFromArguments : Parser<Token * ClosureOfFunctionSyntax * Token -> FunctionTypeExpressionSyntax> =
+    par {
+        let! argumentsOpenParenthesis = matchToken OpenParenthesisToken
+        let! argumentTypes = manySep parseTypeExpression CommaToken CloseParenthesisToken
+        let! argumentsCloseParenthesis = matchToken CloseParenthesisToken
+        let! arrowToken = matchToken ArrowToken
+        let! returnType = parseTypeExpression
+        return fun (openClosure, closure, closeClosure) ->
+            {
+                closureOpenParenthesis = openClosure
+                closureOfFunction = closure
+                closureCloseParenthesis = closeClosure
+                argumentTypesOpenParenthesis = argumentsOpenParenthesis
+                argumentTypes = argumentTypes
+                argumentTypesCloseParenthesis = argumentsCloseParenthesis
+                arrow = arrowToken
+                returnType = returnType
+            }
+    }
+
 and parseTypeExpression : Parser<TypeExpressionSyntax> =
     lexerMode TypeMode (par {
         match! currentKind with
         | IdentifierToken ->
             return! parseDeclarationReference |> map DeclarationReferenceTypeExpression
+        | TypeVariableIdentifierToken ->
+            return! nextToken |> map TypeVariableIdentifierTypeExpression
+        | OpenParenthesisToken ->
+            let! openParenthesis = nextToken
+            match! currentKind with
+            | PipeToken ->
+                // (|
+                //  ^
+                // we parse a closure type as part of a function type
+                let! closureType = parseClosureTypeExpression
+                let! closeParenthesis = matchToken CloseParenthesisToken
+                let! restOfFunctionType = parseFunctionTypeExpressionStartingFromArguments
+                return
+                    (openParenthesis, ClosureTypeExpression closureType, closeParenthesis)
+                    |> restOfFunctionType
+                    |> FunctionTypeExpression
+            | _ ->
+                // (
+                //  ^
+                // which is either parenthesized type expression or ('closure)(...) -> <ty-expr> case of function types
+                let! innerType = parseTypeExpression
+                let! closeParenthesis = matchToken CloseParenthesisToken
+                let! currentTokenKind = currentKind
+                match! ret (innerType, currentTokenKind) with
+                | (TypeVariableIdentifierTypeExpression typeVariable, OpenParenthesisToken) ->
+                    // currently we see this
+                    // ('typeVar)(
+                    //           ^
+                    // this is one of the two valid cases of function type, so let's parse that
+                    let! restOfFunctionType = parseFunctionTypeExpressionStartingFromArguments
+                    return
+                        (openParenthesis, ClosureTypeVariable typeVariable, closeParenthesis)
+                        |> restOfFunctionType
+                        |> FunctionTypeExpression
+                | _ ->
+                    // (<ty-expr>)
+                    //            ^
+                    return
+                        (openParenthesis, innerType, closeParenthesis)
+                        |> ParenthesizedTypeExpressionSyntax
+        | OpenBraceToken
+        | KeywordToken PackedKeyword ->
+            // [packed] "{"
+            let! packed =
+                matchToken (KeywordToken PackedKeyword)
+                |> ifCurrentKind (KeywordToken PackedKeyword)
+            let! openBrace = matchToken OpenBraceToken
+            let! recordMemberTypes =
+                par {
+                    match! currentKind with
+                    | CloseBraceToken ->
+                        return EmptySyntaxList
+                    | _ ->
+                        return!
+                            many1Sep parseIdentifierWithType SemicolonToken
+                            |> map SeparatedNonEmprySyntaxList.toSeparatedSyntaxList
+                }
+            let! closeBrace = matchToken CloseBraceToken
+            return RecordTypeExpression {
+                packed = packed
+                openBrace = openBrace
+                recordMemberTypes = recordMemberTypes
+                closeBrace = closeBrace
+            }
         | KeywordToken keyword ->
             match keyword |> SyntaxFacts.getKeywordBaseType with
             | Some baseTy ->
                 return! nextToken |> map BuiltInTypeExpression
             | None ->
                 let! token = matchToken (KeywordToken UnitKeyword)
-                let! _skip = nextToken
+                let! _skip = nextToken // TODO actual skipping, once implemented
                 return token |> BuiltInTypeExpression
-        | TypeVariableIdentifierToken ->
-            return! nextToken |> map TypeVariableIdentifierTypeExpression
         | _ ->
             let! unitType = matchToken (KeywordToken UnitKeyword)
-            let! _skip = nextToken
+            //let! _skip = nextToken // this hurts recovery from e.g. "alias a = { a: a; a: }" so let's turn it off for now? idk why it was added
             return unitType |> BuiltInTypeExpression
     })
     
@@ -351,8 +449,31 @@ and parsePrimaryExpression : Parser<ExpressionSyntax> =
                 | _ ->
                     let! closeParenthesis = matchToken CloseParenthesisToken
                     return ParenthesizedExpressionSyntax (openParenthesis, innerExpression, closeParenthesis)
-        | _ -> return! matchToken IntLiteralToken |> map NumberExpressionSyntax
+        | InlineCppToken ->
+            return! matchToken InlineCppToken |> map InlineCppExpressionSyntax
+        (*
+        | OpenBracketToken ->
+            let! openBracket = nextToken
+            let! listElements = many1Sep parseExpression CommaToken
+            let! closeBracket = matchToken CloseBracketToken
+            return ??? // is in the ebnf file but not in the original parser..?
+        *)
+        | _ ->
+            return! matchToken IntLiteralToken |> map NumberExpressionSyntax
     }
+
+and parseIdentifierWithType : Parser<IdentifierWithType> =
+    pipe3
+        (matchToken IdentifierToken)
+        (matchToken ColonToken)
+        (parseTypeExpression)
+        (fun identifier colon typeExpression ->
+            {
+                identifier = identifier
+                colon = colon
+                requiredType = typeExpression
+            }
+        )
 
 and parseOptionalType : Parser<(Token * TypeExpressionSyntax) option> =
     lexerMode TypeMode (

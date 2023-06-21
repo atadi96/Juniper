@@ -14,6 +14,8 @@ module SeparatedNonEmprySyntaxList =
     let prepend (item, sep) (SeparatedNonEmptySyntaxList (firstItem, followingItems)) =
         SeparatedNonEmptySyntaxList (item, (sep, firstItem) :: followingItems)
     let singleton item = SeparatedNonEmptySyntaxList (item, [])
+    let toSeparatedSyntaxList (SeparatedNonEmptySyntaxList (firstItem, followingItems)) =
+        SeparatedSyntaxList (firstItem, followingItems)
 
 type ModuleDefinitionSyntax =
     {
@@ -31,6 +33,7 @@ and DeclarationSyntax =
     | FunctionDeclarationSyntax of FunctionDeclarationSyntax
     | LetDeclarationSyntax of LetDeclarationSyntax
     | AliasSyntax of AliasSyntax
+    | InlineCppDeclarationSyntax of Token
 and OpenModulesSyntax =
     {
         openKeyword: Token
@@ -122,10 +125,47 @@ and DeclarationReferenceSyntax =
     | IdentifierDeclarationReference of IdentifierDeclarationReferenceSyntax
     | ModuleQualifierDeclarationReference of ModuleQualifierSyntax
 
+and FunctionTypeExpressionSyntax =
+    {
+        closureOpenParenthesis: Token
+        closureOfFunction: ClosureOfFunctionSyntax
+        closureCloseParenthesis: Token
+        argumentTypesOpenParenthesis: Token
+        argumentTypes: SeparatedSyntaxList<TypeExpressionSyntax>
+        argumentTypesCloseParenthesis: Token
+        arrow: Token
+        returnType: TypeExpressionSyntax
+    }
+and ClosureTypeExpressionSyntax =
+    {
+        openPipe: Token
+        capturedVariables: SeparatedSyntaxList<IdentifierWithType>
+        closePipe: Token
+    }
+and IdentifierWithType =
+    {
+        identifier: Token
+        colon: Token
+        requiredType: TypeExpressionSyntax
+    }
+and ClosureOfFunctionSyntax =
+    | ClosureTypeExpression of ClosureTypeExpressionSyntax
+    | ClosureTypeVariable of Token
+and RecordTypeExpressionSyntax =
+    {
+        packed: Token option
+        openBrace: Token
+        recordMemberTypes: SeparatedSyntaxList<IdentifierWithType>
+        closeBrace: Token
+    }
+
 and TypeExpressionSyntax =
     | DeclarationReferenceTypeExpression of DeclarationReferenceSyntax
     | BuiltInTypeExpression of Token
     | TypeVariableIdentifierTypeExpression of Token
+    | FunctionTypeExpression of FunctionTypeExpressionSyntax
+    | ParenthesizedTypeExpressionSyntax of Token * TypeExpressionSyntax * Token
+    | RecordTypeExpression of RecordTypeExpressionSyntax
 
 and ExpressionSyntax =
     | UnitLiteralExpression of Token * Token
@@ -137,6 +177,7 @@ and ExpressionSyntax =
     | StringLiteralExpressionSyntax of Token
     | CharacterArrayLiteralExpressionSyntax of Token
     | DeclarationReferenceExpressionSyntax of DeclarationReferenceSyntax * (TemplateApplicationSyntax option)
+    | InlineCppExpressionSyntax of Token
     
     
 type ParseError = PE of (FParsec.Position * FParsec.Position * string * (ParseError list))

@@ -29,6 +29,7 @@ type Keyword =
     | PointerKeyword
     | StringKeyword
     | RawPointerKeyword
+    | PackedKeyword
 
 type TokenKind =
     | BadToken
@@ -55,16 +56,16 @@ type TokenKind =
     //| BangToken
     //| BitshiftRightToken
     //| BitshiftLeftToken
-    //| OpenBraceToken
-    //| CloseBraceToken
-    //| OpenBracketToken
-    //| CloseBracketToken
+    | OpenBraceToken
+    | CloseBraceToken
+    | OpenBracketToken
+    | CloseBracketToken
     | ColonToken
     | SemicolonToken
     //| UnsafeTypeCastToken
     //| ApostropheToken
     | InlineCppToken
-    //| ArrowToken
+    | ArrowToken
     //| DoubleArrowToken
     | StringLiteralToken
     | CharacterArrayLiteralToken

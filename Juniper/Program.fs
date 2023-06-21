@@ -48,12 +48,13 @@ let main argv =
     while true do
         let mutable source = ""
         let mutable line = System.Console.ReadLine()
-        while line <> ";;" do
+        while line <> ";;" && line <> ";;ast" do
             source <- source + System.Environment.NewLine + line
             line <- System.Console.ReadLine()
 
         let syntaxTree = Parsing.Syntax.parse "<repl>" source
-        printfn "%A" syntaxTree.expression
+        if line = ";;ast" then
+            printfn "%A" syntaxTree.expression
         printfn "%A" syntaxTree.lexErrors
         for Parsing.SyntaxTree.PE (startPosition, endPosition, message, rest) in syntaxTree.parseErrors do
             printfn "%A - %A: %s (+%i)" startPosition endPosition message (rest.Length)

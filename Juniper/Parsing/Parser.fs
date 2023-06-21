@@ -19,6 +19,7 @@ let errors : Parser<ParseError list * (FParsec.Position * string) list> =
         (errors |> List.rev, lexErrors), state
     
 let rec nextToken : Parser<Token> =
+    // TODO if we *SKIP* a token, it needs to be added to following token's leading trivia!!!
     fun (lexer, state) ->
         let rec getNextGoodToken accumulatedLeadingTrivia =
             let newToken = lexer.Lex()

@@ -53,6 +53,7 @@ let getKeyword (text: string) =
     | "pointer" -> Some PointerKeyword
     | "string" -> Some StringKeyword
     | "rawpointer" -> Some RawPointerKeyword
+    | "packed" -> Some PackedKeyword
     | _ -> None
 
 let keywordText (keyword: Keyword) =
@@ -78,6 +79,7 @@ let keywordText (keyword: Keyword) =
     | PointerKeyword -> "pointer"
     | StringKeyword -> "string"
     | RawPointerKeyword -> "rawpointer"
+    | PackedKeyword -> "packed"
 
 let getKeywordBaseType (keyword: Keyword) =
     match keyword with

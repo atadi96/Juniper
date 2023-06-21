@@ -126,8 +126,7 @@ module private Lexer =
             eof >>% TokenKind EndOfFileToken
 
             skipChar '+' >>% TokenKind PlusToken
-            skipChar '-' >>% TokenKind MinusToken
-            //skipChar '-' >>. (skipChar '>' >>% TokenKind ArrowToken <|> preturn (TokenKind MinusToken))
+            skipChar '-' >>. (skipChar '>' >>% TokenKind ArrowToken <|> preturn (TokenKind MinusToken))
             
             skipChar '*' >>% TokenKind StarToken
             skipChar '/' >>% TokenKind SlashToken
@@ -150,10 +149,10 @@ module private Lexer =
 
             skipChar '>' >>% TokenKind GreaterThanToken
             //skipChar '>' >>. choice [ skipChar '=' >>% TokenKind GreaterThanOrEqualToken; skipString ">>" >>% TokenKind BitshiftRightToken; preturn (TokenKind GreaterThanToken) ]
-            //skipChar '{' >>% TokenKind OpenBraceToken
-            //skipChar '}' >>% TokenKind CloseBraceToken
-            //skipChar '[' >>% TokenKind OpenBracketToken
-            //skipChar ']' >>% TokenKind CloseBracketToken
+            skipChar '{' >>% TokenKind OpenBraceToken
+            skipChar '}' >>% TokenKind CloseBraceToken
+            skipChar '[' >>% TokenKind OpenBracketToken
+            skipChar ']' >>% TokenKind CloseBracketToken
 
             skipChar ':' >>% TokenKind ColonToken
             //skipChar ':' >>. (skipString ":::" >>% TokenKind UnsafeTypeCastToken <|> preturn (TokenKind ColonToken))
@@ -222,15 +221,15 @@ module private Lexer =
             //| BangToken
             //| BitshiftRightToken
             //| BitshiftLeftToken
-            //| OpenBraceToken
-            //BadTokenTriviaraceToken
-            //| OpenBracketToken
-            //| CloseBracketToken
+            | OpenBraceToken -> k, "{", None
+            | CloseBraceToken -> k, "}", None
+            | OpenBracketToken -> k, "[", None
+            | CloseBracketToken -> k, "]", None
             | SemicolonToken -> k, ";", None
             //| UnsafeTypeCastToken
             //| CommaToken
             //| ApostropheToken
-            //| ArrowToken
+            | ArrowToken -> k, "->", None
             //| DoubleArrowToken -> k, "?", None
             | BadToken
             | IdentifierToken
