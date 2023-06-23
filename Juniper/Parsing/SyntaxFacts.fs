@@ -61,6 +61,12 @@ let getKeyword (text: string) =
     | "fn" -> Some FnKeyword
     | "end" -> Some EndKeyword
     | "ref" -> Some RefKeyword
+    | "true" -> Some TrueKeyword
+    | "false" -> Some FalseKeyword
+    | "null" -> Some NullKeyword
+    | "case" -> Some CaseKeyword
+    | "of" -> Some OfKeyword
+    | "mutable" -> Some MutableKeyword
     | _ -> None
 
 let keywordText (keyword: Keyword) =
@@ -91,6 +97,12 @@ let keywordText (keyword: Keyword) =
     | FnKeyword -> "fn"
     | EndKeyword -> "end"
     | RefKeyword -> "ref"
+    | TrueKeyword -> "true"
+    | FalseKeyword -> "false"
+    | NullKeyword -> "null"
+    | CaseKeyword -> "case"
+    | OfKeyword -> "of"
+    | MutableKeyword -> "mutable"
 
 let getKeywordBaseType (keyword: Keyword) =
     match keyword with

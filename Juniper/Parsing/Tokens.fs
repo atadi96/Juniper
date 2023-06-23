@@ -34,6 +34,12 @@ type Keyword =
     | FnKeyword
     | EndKeyword
     | RefKeyword
+    | TrueKeyword
+    | FalseKeyword
+    | NullKeyword
+    | CaseKeyword
+    | OfKeyword
+    | MutableKeyword
 
 type TokenKind =
     | BadToken
@@ -50,7 +56,7 @@ type TokenKind =
     //| BitwiseXorToken
     //| BitwiseAndToken
     | BitwiseNotToken
-    //| EqualsEqualsToken
+    | EqualsEqualsToken
     | EqualsToken
     //| BangEqualsToken
     | LessThanToken
@@ -70,7 +76,7 @@ type TokenKind =
     //| ApostropheToken
     | InlineCppToken
     | ArrowToken
-    //| DoubleArrowToken
+    | DoubleArrowToken
     | StringLiteralToken
     | CharacterArrayLiteralToken
     | CommaToken

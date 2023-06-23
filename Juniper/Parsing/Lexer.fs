@@ -136,8 +136,7 @@ module private Lexer =
 
             skipChar ',' >>% TokenKind CommaToken
             
-            skipChar '=' >>% TokenKind EqualsToken
-            //skipChar '=' >>. choice [ skipChar '=' >>% TokenKind EqualsEqualsToken; skipChar '>' >>% TokenKind DoubleArrowToken; preturn (TokenKind EqualsToken) ]
+            skipChar '=' >>. choice [ skipChar '=' >>% TokenKind EqualsEqualsToken; skipChar '>' >>% TokenKind DoubleArrowToken; preturn (TokenKind EqualsToken) ]
 
             skipChar '!' >>% TokenKind BangToken
             //skipChar '!' >>. (skipChar '=' >>% TokenKind BangEqualsToken <|> preturn (TokenKind BangToken))
@@ -212,8 +211,7 @@ module private Lexer =
             //| BitwiseXorToken
             //| BitwiseAndToken
             | BitwiseNotToken -> k, "~~~", None
-            //| EqualsEqualsToken
-            //| EqualsToken
+            | EqualsEqualsToken -> k, "==", None
             //| BangEqualsToken
             | LessThanToken -> k, "<", None
             //| LessThanOrEqualToken
@@ -230,7 +228,7 @@ module private Lexer =
             //| UnsafeTypeCastToken
             //| ApostropheToken
             | ArrowToken -> k, "->", None
-            //| DoubleArrowToken -> k, "?", None
+            | DoubleArrowToken -> k, "=>", None
             | BadToken
             | IdentifierToken
             | TypeVariableIdentifierToken

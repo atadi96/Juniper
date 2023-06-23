@@ -196,6 +196,16 @@ and LambdaExpressionSyntax =
         endKeyword: Token
     }
 
+and CaseOfExpressionSyntax =
+    {
+        caseKeyword: Token
+        matchExpression: ExpressionSyntax
+        ofKeyword: Token
+        firstPipe: Token
+        caseClauses: SeparatedNonEmptySyntaxList<CaseClauseSyntax>
+        endKeyword: Token
+    }
+
 and ExpressionSyntax =
     | UnitLiteralExpression of Token * Token
     | UnaryExpressionSyntax of Token * ExpressionSyntax
@@ -206,13 +216,43 @@ and ExpressionSyntax =
     | StringLiteralExpressionSyntax of Token
     | CharacterArrayLiteralExpressionSyntax of Token
     | DeclarationReferenceExpressionSyntax of DeclarationReferenceSyntax * (TemplateApplicationSyntax option)
+    | CaseOfExpression of CaseOfExpressionSyntax
     | InlineCppExpressionSyntax of Token
     | FunctionCallExpression of FunctionCallExpressionSyntax
     | LetExpression of LetExpressionSyntax
     | LambdaExpression of LambdaExpressionSyntax
     
+and CaseClauseSyntax =
+    {
+        pattern: PatternSyntax
+        doubleArrow: Token
+        expression: ExpressionSyntax
+    }
+    
+and VariablePatternSyntax =
+    {
+        mutableKeyword: Token option
+        variablePatternIdentifier: Token
+        optionalType: (Token * TypeExpressionSyntax) option
+    }
+
+and ValConPatternSyntax =
+    {
+        valConDeclarationReference: DeclarationReferenceSyntax
+        optionalTemplateApplication: TemplateApplicationSyntax option
+        openParenthesis: Token
+        valConArguments: SeparatedSyntaxList<PatternSyntax>
+        closeParenthesis: Token
+    }
+
 and PatternSyntax =
-    | VariablePattern of Token
+    | VariablePattern of VariablePatternSyntax
+    | IntegerPattern of Token
+    | TruePattern of Token
+    | FalsePattern of Token
+    | UnderscorePattern of Token
+    | UnitPattern of Token * Token
+    | ValConPattern of ValConPatternSyntax
 
 type ParseError = PE of (FParsec.Position * FParsec.Position * string * (ParseError list))
 

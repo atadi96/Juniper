@@ -512,6 +512,21 @@ and parsePrimaryExpression : Parser<ExpressionSyntax> =
                 lambdaBodyExpression = bodyExpression
                 endKeyword = endKeyword
             }
+        | KeywordToken CaseKeyword ->
+            let! caseKeyword = nextToken
+            let! matchExpression = parseExpression
+            let! ofKeyword = matchToken (KeywordToken OfKeyword)
+            let! firstPipe = matchToken (PipeToken)
+            let! clauses = many1Sep parseCaseClause PipeToken
+            let! endKeyword = matchToken (KeywordToken EndKeyword)
+            return CaseOfExpression {
+                caseKeyword = caseKeyword
+                matchExpression = matchExpression
+                ofKeyword = ofKeyword
+                firstPipe = firstPipe
+                caseClauses = clauses
+                endKeyword = endKeyword
+            }
         (*
         | OpenBracketToken ->
             let! openBracket = nextToken
@@ -540,8 +555,134 @@ and parsePrimaryExpression : Parser<ExpressionSyntax> =
                 ) expression
         }
 
+and parseCaseClause : Parser<CaseClauseSyntax> =
+    pipe3
+        parsePattern
+        (matchToken DoubleArrowToken)
+        parseExpression
+        (fun pattern doubleArrow expression ->
+            {
+                pattern = pattern
+                doubleArrow = doubleArrow
+                expression = expression
+            }
+        )
+
 and parsePattern : Parser<PatternSyntax> =
-    matchToken IdentifierToken |> map VariablePattern
+    par {
+        match! currentKind with
+        | KeywordToken MutableKeyword ->
+            let! mutableKeyword = nextToken
+            let! identifier = parseIdentifierWithOptionalType
+            return VariablePattern {
+                mutableKeyword = Some mutableKeyword
+                variablePatternIdentifier = identifier.identifier
+                optionalType = identifier.optionalType
+            }
+        | KeywordToken TrueKeyword ->
+            return! nextToken |> map TruePattern
+        | KeywordToken FalseKeyword ->
+            return! nextToken |> map FalsePattern
+        | IntLiteralToken ->
+            return! nextToken |> map IntegerPattern
+        | IdentifierToken ->
+            let! firstIdentifier = nextToken
+            let! currentToken = current
+            match! ret (firstIdentifier, currentToken) with
+            // all cases we have to cover:
+            // module:member[<...>](...)
+            // id<...>(...)
+            // id(...)
+            // id: ty
+            // id :ty
+            // id : ty
+            // _
+            // id
+            | ({ trailingTrivia = []}, { tokenKind = ColonToken; trailingTrivia = [] }) ->
+                // moduleName:
+                //           ^ 
+                let! colon = nextToken
+                let! moduleMember = matchToken IdentifierToken
+                let! restOfValCon = parseValConRest
+                return
+                    ModuleQualifierDeclarationReference {
+                        moduleNameIdentifier = firstIdentifier
+                        colon = colon
+                        moduleDeclarationNameIdentifier = moduleMember
+                    }
+                    |> restOfValCon
+            | (_, { tokenKind = LessThanToken })
+            | (_, { tokenKind = OpenParenthesisToken }) ->
+                // id<
+                //   ^
+                // -or-
+                // id(
+                //   ^
+                let! restOfValcon = parseValConRest
+                return
+                    IdentifierDeclarationReference {
+                        declarationNameIdentifier = firstIdentifier
+                    }
+                    |> restOfValcon
+            | (_, { tokenKind = ColonToken }) ->
+                // id: ty
+                //   ^
+                // -or-
+                // id : ty
+                //    ^
+                // -or-
+                // id :ty
+                //    ^
+                let! optionalType = parseOptionalType
+                return VariablePattern {
+                    mutableKeyword = None
+                    variablePatternIdentifier = firstIdentifier
+                    optionalType = optionalType
+                }
+            | ({ text = Some "_"}, _) ->
+                // _
+                //  ^
+                return UnderscorePattern firstIdentifier
+            | _ ->
+                return VariablePattern {
+                    mutableKeyword = None
+                    variablePatternIdentifier = firstIdentifier
+                    optionalType = None
+                }
+        | OpenParenthesisToken ->
+            let! openParenthesis = nextToken
+            let! closeParenthesis = matchToken CloseParenthesisToken
+            return UnitPattern (openParenthesis, closeParenthesis)
+            // TODO tuple
+            // TODO parenthesized pattern
+
+        | _ ->
+            let! identifier = matchToken IdentifierToken
+            return VariablePattern {
+                mutableKeyword = None
+                variablePatternIdentifier = identifier
+                optionalType = None
+            }
+    }
+
+and parseValConRest : Parser<DeclarationReferenceSyntax -> PatternSyntax> =
+    par {
+        let! optionalTemplateApplication =
+            parseTemplateApplication
+            |> ifCurrentKind LessThanToken
+        let! openParenthesis = matchToken OpenParenthesisToken
+        let! valConArguments =
+            manySep parsePattern CommaToken CloseParenthesisToken
+        let! closeParenthesis = matchToken CloseParenthesisToken
+        return fun declarationReference ->
+            ValConPattern {
+                valConDeclarationReference = declarationReference
+                optionalTemplateApplication = optionalTemplateApplication
+                openParenthesis = openParenthesis
+                valConArguments = valConArguments
+                closeParenthesis = closeParenthesis
+            }
+    }
 
 and parseIdentifierWithType : Parser<IdentifierWithType> =
     pipe3
