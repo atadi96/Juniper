@@ -6,6 +6,7 @@ type TokenValue =
     | BaseTypeValue of Ast.BaseTypes
     | TypeVariableIdentifierValue of string
     | InlineCppCodeValue of string
+    | BoolValue of bool
 
 type Keyword =
     | ModuleKeyword

@@ -205,7 +205,11 @@ module private Lexer =
             | CommaToken -> k, ",", None
             | EqualsToken -> k, "=", None
             | ColonToken -> k, ":", None
-            | KeywordToken keyword -> k, (SyntaxFacts.keywordText keyword), None
+            | KeywordToken keyword ->
+                match keyword with
+                | TrueKeyword -> k, (SyntaxFacts.keywordText keyword), Some (BoolValue true)
+                | FalseKeyword -> k, (SyntaxFacts.keywordText keyword), Some (BoolValue false)
+                | _ -> k, (SyntaxFacts.keywordText keyword), None
             | PipeToken -> k, "|", None
             //| BitwiseOrToken
             //| BitwiseXorToken

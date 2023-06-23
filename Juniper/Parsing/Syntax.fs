@@ -326,7 +326,7 @@ and parseTypeExpression : Parser<TypeExpressionSyntax> =
                 // (
                 //  ^
                 // which is either parenthesized type expression or ('closure)(...) -> <ty-expr> case of function types
-                let! innerType = parseTypeExpression
+                let! innerType = parseTypeExpression // TODO for tuples, this has to become a list
                 let! closeParenthesis = matchToken CloseParenthesisToken
                 let! currentTokenKind = currentKind
                 match! ret (innerType, currentTokenKind) with
@@ -453,6 +453,11 @@ and parsePrimaryExpression : Parser<ExpressionSyntax> =
                 parseTemplateApplication
                 |> ifCurrentKind LessThanToken
             return DeclarationReferenceExpressionSyntax (declarationReference, optionalTemplateApplication)
+        | KeywordToken TrueKeyword
+        | KeywordToken FalseKeyword ->
+            return! nextToken |> map BoolLiteralExpression
+        | KeywordToken NullKeyword ->
+            return! nextToken |> map NullLiteralExpression
         | IntLiteralToken ->
             return! nextToken |> map NumberExpressionSyntax
         | StringLiteralToken ->

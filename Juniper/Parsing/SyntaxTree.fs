@@ -208,6 +208,8 @@ and CaseOfExpressionSyntax =
 
 and ExpressionSyntax =
     | UnitLiteralExpression of Token * Token
+    | BoolLiteralExpression of Token
+    | NullLiteralExpression of Token
     | UnaryExpressionSyntax of Token * ExpressionSyntax
     | BinaryExpressionSyntax of ExpressionSyntax * Token * ExpressionSyntax
     | NumberExpressionSyntax of Token
