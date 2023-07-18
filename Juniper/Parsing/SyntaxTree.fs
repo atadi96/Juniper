@@ -2,26 +2,40 @@
 
 open Tokens
 
-
-
 type SeparatedSyntaxList<'TItem> =
     | EmptySyntaxList
     | SeparatedSyntaxList of 'TItem * (Token * 'TItem) list
 
 and SeparatedNonEmptySyntaxList<'TItem> = SeparatedNonEmptySyntaxList of 'TItem * (Token * 'TItem) list
 
-module SeparatedNonEmprySyntaxList =
+module SeparatedNonEmptySyntaxList =
     let prepend (item, sep) (SeparatedNonEmptySyntaxList (firstItem, followingItems)) =
         SeparatedNonEmptySyntaxList (item, (sep, firstItem) :: followingItems)
     let singleton item = SeparatedNonEmptySyntaxList (item, [])
     let toSeparatedSyntaxList (SeparatedNonEmptySyntaxList (firstItem, followingItems)) =
         SeparatedSyntaxList (firstItem, followingItems)
+    let toSeq fSeparator fItem (SeparatedNonEmptySyntaxList (firstItem, followingItems)) =
+        seq {
+            yield firstItem |> fItem
+            for (token,item) in followingItems do
+                yield token |> fSeparator
+                yield item |> fItem
+        }
+
+module SeparatedSyntaxList =
+    let toSeq fSeparator fItem separatedSyntaxList =
+        match separatedSyntaxList with
+        | EmptySyntaxList -> Seq.empty
+        | SeparatedSyntaxList (item,items) ->
+            SeparatedNonEmptySyntaxList (item,items)
+            |> SeparatedNonEmptySyntaxList.toSeq fSeparator fItem
 
 type ModuleDefinitionSyntax =
     {
         moduleName: ModuleNameSyntax
         declarations: DeclarationSyntax list
     }
+            
 and ModuleNameSyntax =
     {
         moduleKeyword: Token
@@ -136,18 +150,21 @@ and FunctionTypeExpressionSyntax =
         arrow: Token
         returnType: TypeExpressionSyntax
     }
+
 and ClosureTypeExpressionSyntax =
     {
         openPipe: Token
         capturedVariables: SeparatedSyntaxList<IdentifierWithType>
         closePipe: Token
     }
+
 and IdentifierWithType =
     {
         identifier: Token
         colon: Token
         requiredType: TypeExpressionSyntax
     }
+
 and ClosureOfFunctionSyntax =
     | ClosureTypeExpression of ClosureTypeExpressionSyntax
     | ClosureTypeVariable of Token
@@ -176,12 +193,89 @@ and FunctionCallExpressionSyntax =
         closeParenthesis: Token
     }
 
+and IfExpressionSyntax =
+    {
+        ifKeyword: Token
+        conditionExpression: ExpressionSyntax
+        thenKeyword: Token
+        trueExpression: ExpressionSyntax
+        elifBranches: ElifBranchSyntax list
+        elseKeyword: Token
+        falseExpression: ExpressionSyntax
+        endKeyword: Token
+    }
+    
+and ElifBranchSyntax =
+    {
+        elifKeyword: Token
+        conditionExpression: ExpressionSyntax
+        thenKeyword: Token
+        trueExpression: ExpressionSyntax
+    }
+
 and LetExpressionSyntax =
     {
         letKeyword: Token
         pattern: PatternSyntax
         equals: Token
         body: ExpressionSyntax
+    }
+
+and VariableDeclarationSyntax =
+    {
+        varKeyword: Token
+        variableIdentifier: Token
+        colonToken: Token
+        variableType: TypeExpressionSyntax
+    }
+
+and SetExpressionSyntax =
+    {
+        setKeyword: Token
+        leftAssign: LeftAssignSyntax
+        equalsToken: Token
+        expression: ExpressionSyntax
+    }
+
+and SetRefExpressionSyntax =
+    {
+        setKeyword: Token
+        refKeyword: Token
+        leftAssign: LeftAssignSyntax
+        equalsToken: Token
+        expression: ExpressionSyntax
+    }
+
+and ForLoopExpressionSyntax =
+    {
+        forKeyword: Token
+        identifier: Token
+        optionalTyExpr: (Token * TypeExpressionSyntax) option
+        inKeyword: Token
+        startExpression: ExpressionSyntax
+        direction: Token
+        endExpression: ExpressionSyntax
+        doKeyword: Token
+        bodyExpression: ExpressionSyntax
+        endKeyword: Token
+    }
+
+and DoWhileExpressionSyntax =
+    {
+        doKeyword: Token
+        bodyExpression: ExpressionSyntax
+        whileKeyword: Token
+        conditionExpression: ExpressionSyntax
+        endKeyword: Token
+    }
+
+and WhileDoExpressionSyntax =
+    {
+        whileKeyword: Token
+        conditionExpression: ExpressionSyntax
+        doKeyword: Token
+        bodyExpression: ExpressionSyntax
+        endKeyword: Token
     }
 
 and LambdaExpressionSyntax =
@@ -221,9 +315,36 @@ and ExpressionSyntax =
     | CaseOfExpression of CaseOfExpressionSyntax
     | InlineCppExpressionSyntax of Token
     | FunctionCallExpression of FunctionCallExpressionSyntax
+    | IfExpression of IfExpressionSyntax
     | LetExpression of LetExpressionSyntax
+    | VariableDeclaration of VariableDeclarationSyntax
+    | SetExpression of SetExpressionSyntax
+    | SetRefExpression of SetRefExpressionSyntax
+    | ForLoopExpression of ForLoopExpressionSyntax
+    | DoWhileExpression of DoWhileExpressionSyntax
+    | WhileDoExpression of WhileDoExpressionSyntax
     | LambdaExpression of LambdaExpressionSyntax
-    
+
+and ArrayAccessLeftAssignSyntax =
+    {
+        arrayLeftAssign: LeftAssignSyntax
+        openBracket: Token
+        indexExpression: ExpressionSyntax
+        closeBracket: Token
+    }
+
+and RecordMemberLeftAssignSyntax =
+    {
+        recordLeftAssign: LeftAssignSyntax
+        memberAccess: Token
+        memberIdentifier: Token
+    }
+
+and LeftAssignSyntax =
+    | DeclarationReferenceLeftAssign of DeclarationReferenceSyntax
+    | ArrayAccessLeftAssign of ArrayAccessLeftAssignSyntax
+    | RecordMemberLeftAssign of RecordMemberLeftAssignSyntax
+
 and CaseClauseSyntax =
     {
         pattern: PatternSyntax

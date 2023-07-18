@@ -1,5 +1,25 @@
 module Parsing.Tokens
 
+type Position =
+    {
+        streamName: string
+        lineIndex: int
+        colIndex: int
+        index: int
+    }
+
+module Position =
+    let fromFParsec (fparsecPosition: FParsec.Position) =
+        {
+            streamName = fparsecPosition.StreamName
+            lineIndex = int fparsecPosition.Line - 1
+            colIndex = int fparsecPosition.Column - 1
+            index = int fparsecPosition.Index
+        }
+
+    let toFParsec (pos: Position) =
+        FParsec.Position(pos.streamName, pos.index, int64 pos.lineIndex + 1L, int64 pos.colIndex + 1L)
+
 type TokenValue =
     | TextValue of string
     | IntValue of int64
@@ -41,6 +61,13 @@ type Keyword =
     | CaseKeyword
     | OfKeyword
     | MutableKeyword
+    | AndKeyword
+    | OrKeyword
+    | ModKeyword
+    | IfKeyword
+    | ThenKeyword
+    | ElifKeyword
+    | ElseKeyword
 
 type TokenKind =
     | BadToken
@@ -53,28 +80,27 @@ type TokenKind =
     | CloseParenthesisToken
     | KeywordToken of Keyword
     | PipeToken
-    //| BitwiseOrToken
-    //| BitwiseXorToken
-    //| BitwiseAndToken
+    | PipeOperatorToken
+    | BitwiseOrToken
+    | BitwiseXorToken
+    | BitwiseAndToken
     | BitwiseNotToken
     | EqualsEqualsToken
     | EqualsToken
-    //| BangEqualsToken
+    | BangEqualsToken
     | LessThanToken
-    //| LessThanOrEqualToken
+    | LessThanOrEqualToken
     | GreaterThanToken
-    //| GreaterThanOrEqualToken
+    | GreaterThanOrEqualToken
     | BangToken
-    //| BitshiftRightToken
-    //| BitshiftLeftToken
+    | BitshiftRightToken
+    | BitshiftLeftToken
     | OpenBraceToken
     | CloseBraceToken
     | OpenBracketToken
     | CloseBracketToken
     | ColonToken
     | SemicolonToken
-    //| UnsafeTypeCastToken
-    //| ApostropheToken
     | InlineCppToken
     | ArrowToken
     | DoubleArrowToken
@@ -84,8 +110,6 @@ type TokenKind =
     | IntLiteralToken
     | IdentifierToken
     | TypeVariableIdentifierToken
-
-
 
 type SyntaxTriviaKind =
     | SingleLineCommentTrivia
@@ -98,16 +122,16 @@ type SyntaxTrivia =
     {
         triviaKind: SyntaxTriviaKind
         text: string
-        startPos: FParsec.Position
-        endPos: FParsec.Position
+        startPos: Position
+        endPos: Position
     }
 
 type Token =
     {
         text: string option
         value: TokenValue option
-        start: FParsec.Position
-        end_: FParsec.Position
+        start: Position
+        end_: Position
         tokenKind: TokenKind
         leadingTrivia: SyntaxTrivia list
         trailingTrivia: SyntaxTrivia list

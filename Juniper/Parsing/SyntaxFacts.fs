@@ -2,14 +2,7 @@
 
 open Ast
 open Tokens
-(*
-let getUnaryOperatorPrecedence (unaryOp: UnaryOps) =
-    match unaryOp with
-    | LogicalNot -> 12
-    | BitwiseNot -> 12
-    | Negate -> 12
-    | Deref -> 12
-*)
+
 let getUnaryOperatorPrecedence (tokenKind: TokenKind) =
     match tokenKind with
     | MinusToken
@@ -17,20 +10,27 @@ let getUnaryOperatorPrecedence (tokenKind: TokenKind) =
     | BitwiseNotToken
     | BangToken -> 12
     | _ -> 0
-(*
-let getBinaryOperatorPrecedence (binaryOp: BinaryOps) =
-    match binaryOp with
-    | Add | Subtract | Multiply | Divide | Modulo | BitwiseOr | BitwiseAnd | BitwiseXor
-    | LogicalOr | LogicalAnd | Equal | NotEqual | GreaterOrEqual | LessOrEqual | Greater | Less
-    | BitshiftLeft | BitshiftRight | Pipe -> 0
-*)
 
 let getBinaryOperatorPrecedence (tokenKind: TokenKind) =
     match tokenKind with
+    | PipeOperatorToken -> 1
+    | KeywordToken OrKeyword -> 2
+    | KeywordToken AndKeyword -> 3
+    | BitwiseOrToken -> 4
+    | BitwiseAndToken -> 6
+    | EqualsEqualsToken
+    | BangEqualsToken -> 7
+    | LessThanToken
+    | GreaterThanToken
+    | LessThanOrEqualToken
+    | GreaterThanOrEqualToken -> 8
+    | BitshiftRightToken
+    | BitshiftLeftToken -> 9
     | PlusToken
     | MinusToken -> 10
     | StarToken
-    | SlashToken -> 11
+    | SlashToken
+    | KeywordToken ModKeyword -> 11
     | _ -> 0
 
 let getKeyword (text: string) =
@@ -67,6 +67,13 @@ let getKeyword (text: string) =
     | "case" -> Some CaseKeyword
     | "of" -> Some OfKeyword
     | "mutable" -> Some MutableKeyword
+    | "and" -> Some AndKeyword
+    | "or" -> Some OrKeyword
+    | "mod" -> Some ModKeyword
+    | "if" -> Some IfKeyword
+    | "elif" -> Some ElifKeyword
+    | "then" -> Some ThenKeyword
+    | "else" -> Some ElseKeyword
     | _ -> None
 
 let keywordText (keyword: Keyword) =
@@ -103,6 +110,13 @@ let keywordText (keyword: Keyword) =
     | CaseKeyword -> "case"
     | OfKeyword -> "of"
     | MutableKeyword -> "mutable"
+    | AndKeyword -> "and"
+    | OrKeyword -> "or"
+    | ModKeyword -> "mod"
+    | IfKeyword -> "if"
+    | ElifKeyword -> "elif"
+    | ThenKeyword -> "then"
+    | ElseKeyword -> "else"
 
 let getKeywordBaseType (keyword: Keyword) =
     match keyword with

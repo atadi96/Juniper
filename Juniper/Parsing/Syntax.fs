@@ -361,7 +361,7 @@ and parseTypeExpression : Parser<TypeExpressionSyntax> =
                     | _ ->
                         return!
                             many1Sep parseIdentifierWithType SemicolonToken
-                            |> map SeparatedNonEmprySyntaxList.toSeparatedSyntaxList
+                            |> map SeparatedNonEmptySyntaxList.toSeparatedSyntaxList
                 }
             let! closeBrace = matchToken CloseBraceToken
             return RecordTypeExpression {
@@ -478,7 +478,7 @@ and parsePrimaryExpression : Parser<ExpressionSyntax> =
                     let! rest = many1Sep parseExpression SemicolonToken
                     let sequence =
                         rest
-                        |> SeparatedNonEmprySyntaxList.prepend (innerExpression, firstSemicolon)
+                        |> SeparatedNonEmptySyntaxList.prepend (innerExpression, firstSemicolon)
                     let! closeParenthesis = matchToken CloseParenthesisToken
                     return SequenceExpression(openParenthesis, sequence, closeParenthesis)
                 | CloseParenthesisToken
@@ -532,6 +532,25 @@ and parsePrimaryExpression : Parser<ExpressionSyntax> =
                 caseClauses = clauses
                 endKeyword = endKeyword
             }
+        | KeywordToken IfKeyword ->
+            let! ifKeyword = nextToken
+            let! conditionExpression = parseExpression
+            let! thenKeyword = matchToken (KeywordToken ThenKeyword)
+            let! trueExpression = parseExpression
+            let! elifBranches = many parseElifBranch
+            let! elseKeyword = matchToken (KeywordToken ElseKeyword)
+            let! falseExpression = parseExpression
+            let! endKeyword = matchToken (KeywordToken EndKeyword)
+            return IfExpression {
+                ifKeyword = ifKeyword
+                conditionExpression = conditionExpression
+                thenKeyword = thenKeyword
+                trueExpression = trueExpression
+                elifBranches = elifBranches
+                elseKeyword = elseKeyword
+                falseExpression = falseExpression
+                endKeyword = endKeyword
+            }
         (*
         | OpenBracketToken ->
             let! openBracket = nextToken
@@ -559,6 +578,23 @@ and parsePrimaryExpression : Parser<ExpressionSyntax> =
                         }
                 ) expression
         }
+
+and parseElifBranch : Parser<ElifBranchSyntax option> =
+    par {
+        match! currentKind with
+        | KeywordToken ElifKeyword ->
+            let! elifKeyword = matchToken (KeywordToken ElifKeyword)
+            let! conditionExpression = parseExpression
+            let! thenKeyword = matchToken (KeywordToken ThenKeyword)
+            let! trueExpression = parseExpression
+            return Some {
+                elifKeyword = elifKeyword
+                conditionExpression = conditionExpression
+                thenKeyword = thenKeyword
+                trueExpression = trueExpression
+            }
+        | _ -> return None
+    }
 
 and parseCaseClause : Parser<CaseClauseSyntax> =
     pipe3

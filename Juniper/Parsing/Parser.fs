@@ -78,10 +78,10 @@ let matchToken (tokenKind: TokenKind) : Parser<Token> =
                     leadingTrivia = []
                     trailingTrivia = []
                 }
-            let newError = PE (currentToken.start, currentToken.end_, sprintf "Unexpected token <%A>, expecting <%A>" currentToken.tokenKind tokenKind, [])
+            let newError = PE (currentToken.start |> Position.toFParsec, currentToken.end_ |> Position.toFParsec, sprintf "Unexpected token <%A>, expecting <%A>" currentToken.tokenKind tokenKind, [])
             let newErrors =
                 match errors with
-                | PE (startPos, endPos, text, children) :: rest when startPos = currentToken.start && endPos = currentToken.end_ ->
+                | PE (startPos, endPos, text, children) :: rest when startPos = (currentToken.start |> Position.toFParsec) && endPos = (currentToken.end_ |> Position.toFParsec) ->
                     PE (startPos, endPos, text, newError :: children) :: rest
                 | _ -> newError :: errors
                         
@@ -104,15 +104,6 @@ let bind (f: _ -> Parser<_>) (par: Parser<_>) =
         f x (lexer, state')
 
 let ret x: Parser<_> = fun (_lexer, state) -> x, state
-
-type ParBuilder() =
-    member __.Bind(x,f) = bind f x
-    member __.Return x = ret x
-    member __.Zero() = ret ()
-    member __.ReturnFrom x = x
-    member __.Do x = x |> map ignore
-
-let par = ParBuilder()
 
 let lexerMode mode (parser: Parser<_>): Parser<_> =
     fun (lexer, state) ->
@@ -157,9 +148,28 @@ let pipe6 (p1: Parser<_>) (p2: Parser<_>) (p3 : Parser<_>) (p4 : Parser<_>) (p5 
     let (g, state) = p6 (lexer, state)
     f a b c d e g, state
 
+type ParBuilder() =
+    member __.Bind(x,f) = bind f x
+    member __.Bind2(a,b,binder) =
+        pipe2 a b binder
+    member __.Bind3(a,b,c,binder) =
+        pipe3 a b c binder
+    member __.Bind4(a,b,c,d,binder) =
+        pipe4 a b c d binder
+    member __.Bind5(a,b,c,d,e,binder) =
+        pipe5 a b c d e binder
+    member __.Bind6(a,b,c,d,e,f,binder) =
+        pipe6 a b c d e f binder
+    member __.Return x = ret x
+    member __.Zero() = ret ()
+    member __.ReturnFrom x = x
+    member __.Do x = x |> map ignore
+
+let par = ParBuilder()
+
 let currentKind : Parser<TokenKind> =
     current
-    |> bind (fun x -> ret x.tokenKind)
+    |> map (fun x -> x.tokenKind)
             
 let many (item: Parser<_ option>): Parser<_ list> =
     let rec manyInner (lexer, state) =

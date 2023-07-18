@@ -89,8 +89,8 @@ module private Lexer =
                     {
                         triviaKind = triviaKind
                         text = text
-                        startPos = startPos
-                        endPos = endPos
+                        startPos = startPos |> Position.fromFParsec
+                        endPos = endPos |> Position.fromFParsec
                     }
                 )
 
@@ -138,28 +138,24 @@ module private Lexer =
             
             skipChar '=' >>. choice [ skipChar '=' >>% TokenKind EqualsEqualsToken; skipChar '>' >>% TokenKind DoubleArrowToken; preturn (TokenKind EqualsToken) ]
 
-            skipChar '!' >>% TokenKind BangToken
-            //skipChar '!' >>. (skipChar '=' >>% TokenKind BangEqualsToken <|> preturn (TokenKind BangToken))
+            skipChar '!' >>. (skipChar '=' >>% TokenKind BangEqualsToken <|> preturn (TokenKind BangToken))
 
-            skipChar '|' >>% TokenKind PipeToken
-            //skipChar '|' >>. choice [ skipChar '>' >>% TokenKind PipeOperatorToken; skipString "||" >>% TokenKind BitwiseOrToken ]
+            skipChar '|' >>. choice [ skipChar '>' >>% TokenKind PipeOperatorToken; skipString "||" >>% TokenKind BitwiseOrToken ]
 
-            skipChar '<' >>% TokenKind LessThanToken
-            //skipChar '<' >>. choice [ skipChar '=' >>% TokenKind LessThanOrEqualToken; skipString "<<" >>% TokenKind BitshiftLeftToken; preturn (TokenKind LessThanToken) ]
+            skipChar '<' >>. choice [ skipChar '=' >>% TokenKind LessThanOrEqualToken; skipString "<<" >>% TokenKind BitshiftLeftToken; preturn (TokenKind LessThanToken) ]
 
-            skipChar '>' >>% TokenKind GreaterThanToken
-            //skipChar '>' >>. choice [ skipChar '=' >>% TokenKind GreaterThanOrEqualToken; skipString ">>" >>% TokenKind BitshiftRightToken; preturn (TokenKind GreaterThanToken) ]
+            skipChar '>' >>. choice [ skipChar '=' >>% TokenKind GreaterThanOrEqualToken; skipString ">>" >>% TokenKind BitshiftRightToken; preturn (TokenKind GreaterThanToken) ]
+            
             skipChar '{' >>% TokenKind OpenBraceToken
             skipChar '}' >>% TokenKind CloseBraceToken
             skipChar '[' >>% TokenKind OpenBracketToken
             skipChar ']' >>% TokenKind CloseBracketToken
 
             skipChar ':' >>% TokenKind ColonToken
-            //skipChar ':' >>. (skipString ":::" >>% TokenKind UnsafeTypeCastToken <|> preturn (TokenKind ColonToken))
 
             skipChar ';' >>% TokenKind SemicolonToken
-            //skipString "&&&" >>% TokenKind BitwiseAndToken
-            //skipString "^^^" >>% TokenKind BitwiseXorToken
+            skipString "&&&" >>% TokenKind BitwiseAndToken
+            skipString "^^^" >>% TokenKind BitwiseXorToken
             skipString "~~~" >>% TokenKind BitwiseNotToken
 
             followedByString "\"" >>. (Parse.stringLiteral '"' true |> Parse.fatalizeAnyError) |> reportUnterminated "string literal" StringLiteralTokenData
@@ -211,26 +207,25 @@ module private Lexer =
                 | FalseKeyword -> k, (SyntaxFacts.keywordText keyword), Some (BoolValue false)
                 | _ -> k, (SyntaxFacts.keywordText keyword), None
             | PipeToken -> k, "|", None
-            //| BitwiseOrToken
-            //| BitwiseXorToken
-            //| BitwiseAndToken
+            | PipeOperatorToken -> k, "|>", None
+            | BitwiseOrToken -> k, "|||", None
+            | BitwiseXorToken -> k, "^^^", None
+            | BitwiseAndToken -> k, "&&&", None
             | BitwiseNotToken -> k, "~~~", None
             | EqualsEqualsToken -> k, "==", None
-            //| BangEqualsToken
+            | BangEqualsToken -> k, "!=", None
             | LessThanToken -> k, "<", None
-            //| LessThanOrEqualToken
+            | LessThanOrEqualToken -> k, "<=", None
             | GreaterThanToken -> k, ">", None
-            //| GreaterThanOrEqualToken
+            | GreaterThanOrEqualToken -> k, ">=", None
             | BangToken -> k, "!", None
-            //| BitshiftRightToken
-            //| BitshiftLeftToken
+            | BitshiftRightToken -> k, ">>>", None
+            | BitshiftLeftToken -> k, "<<<", None
             | OpenBraceToken -> k, "{", None
             | CloseBraceToken -> k, "}", None
             | OpenBracketToken -> k, "[", None
             | CloseBracketToken -> k, "]", None
             | SemicolonToken -> k, ";", None
-            //| UnsafeTypeCastToken
-            //| ApostropheToken
             | ArrowToken -> k, "->", None
             | DoubleArrowToken -> k, "=>", None
             | BadToken
@@ -250,9 +245,9 @@ module private Lexer =
             (fun leadingTrivia startPos tokenData endPos trailingTrivia ->
                 let (kind, text, value) = tokenData |> tokenArgsFromData
                 {
-                    start = startPos
+                    start = startPos |> Position.fromFParsec
                     text = Some text
-                    end_ = endPos
+                    end_ = endPos |> Position.fromFParsec
                     value = value
                     tokenKind = kind
                     leadingTrivia = leadingTrivia
