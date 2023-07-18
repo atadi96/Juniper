@@ -20,6 +20,7 @@
 	<Compile Include="Parsing\SyntaxFacts.fs" />
 	<Compile Include="Parsing/Lexer.fs" />
 	<Compile Include="Parsing\SyntaxTree.fs" />
+	<Compile Include="Parsing\SyntaxNode.fs" />
 	<Compile Include="Parsing/Parser.fs" />
 	<Compile Include="Parsing\Syntax.fs" />
     <Compile Include="ConvertAst.fs" />

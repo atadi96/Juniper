@@ -104,6 +104,98 @@ type ChildrenSyntaxNode(nodeKind: NodeKind, children: ISyntaxNode seq) =
         member __.Children = children
 
 type SyntaxNode =
+    static member WriteTo (writer: System.IO.TextWriter) (node: ISyntaxNode) =
+        let print format = Printf.ksprintf (Printf.fprintf writer "%s") format
+        let isToConsole = writer = System.Console.Out
+        let setColor c =
+            if isToConsole then
+                System.Console.ForegroundColor <- c
+        let resetColor() =
+            if isToConsole then
+                System.Console.ResetColor()
+        let getMarker (isLast, trailingItems) =
+            match isLast, trailingItems with
+            | true, [] -> "└──"
+            | _ -> "├──"
+        let printTrivia (indent: string) prefix isLast trivias =
+            let rec inner (trivias: SyntaxTrivia list) =
+                match trivias with
+                | [] -> ()
+                | x :: xs ->
+                    let marker = (isLast, xs) |> getMarker
+                    setColor System.ConsoleColor.DarkGray
+                    print "%s" indent
+                    print "%s" marker
+                    if x.triviaKind = BadTokenTrivia then
+                        setColor System.ConsoleColor.DarkRed
+                        print "%s: %A %A" prefix x.triviaKind x.text
+                    else
+                        setColor System.ConsoleColor.DarkGreen
+                        print "%s: %A" prefix x.triviaKind
+                    print "%s" System.Environment.NewLine
+                    inner xs
+            inner trivias
+        let rec writeChildren indent children =
+            match children with
+            | [] -> ()
+            | [ last ] -> write indent true last
+            | child :: rest ->
+                write indent false child
+                writeChildren indent rest
+        and write (indent: string) isLast (node: ISyntaxNode) =
+            match node with
+            | :? TokenSyntaxNode as token ->
+
+                printTrivia indent "L" false token.Token.leadingTrivia
+
+                let tokenMarker = (isLast, token.Token.trailingTrivia) |> getMarker
+
+                setColor System.ConsoleColor.DarkGray
+                print "%s" indent
+                print "%s" tokenMarker
+
+                setColor (
+                    match token.Token.text with
+                    | Some _ -> System.ConsoleColor.Blue
+                    | None -> System.ConsoleColor.DarkRed
+                )
+                print "%A" token.Token.tokenKind
+                token.Token.value |> Option.iter (print " %A")
+                setColor (
+                    match token.Token.tokenKind with
+                    | KeywordToken _ -> System.ConsoleColor.DarkYellow
+                    | _ -> System.ConsoleColor.White
+                )
+                token.Token.text |> Option.iter (print " %s")
+                resetColor()
+                print "%s" System.Environment.NewLine
+
+                printTrivia indent "T" isLast token.Token.trailingTrivia
+
+            | _ ->
+                
+                let tokenMarker = (isLast, []) |> getMarker
+                
+                setColor System.ConsoleColor.DarkGray
+                print "%s" indent
+                print "%s" tokenMarker
+
+                setColor System.ConsoleColor.Cyan
+                print "%A" node.Kind
+                resetColor()
+                print "%s" System.Environment.NewLine
+
+                let childIndent =
+                    if isLast then
+                        indent + "   "
+                    else
+                        indent + "|  "
+
+                writeChildren childIndent (node.Children |> List.ofSeq)
+        write "" true node
+
+            
+
     static member FromList (from: _ -> ISyntaxNode) (separatedSyntaxList: SeparatedSyntaxList<_>): ISyntaxNode list =
         match separatedSyntaxList with
         | EmptySyntaxList -> []

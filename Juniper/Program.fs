@@ -54,7 +54,9 @@ let main argv =
 
         let syntaxTree = Parsing.Syntax.parse "<repl>" source
         if line = ";;ast" then
-            printfn "%A" syntaxTree.expression
+            syntaxTree
+            |> Parsing.SyntaxNode.SyntaxNode.From
+            |> Parsing.SyntaxNode.SyntaxNode.WriteTo System.Console.Out
         printfn "%A" syntaxTree.lexErrors
         for Parsing.SyntaxTree.PE (startPosition, endPosition, message, rest) in syntaxTree.parseErrors do
             printfn "%A - %A: %s (+%i)" startPosition endPosition message (rest.Length)
