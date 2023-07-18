@@ -53,13 +53,23 @@ let main argv =
             line <- System.Console.ReadLine()
 
         let syntaxTree = Parsing.Syntax.parse "<repl>" source
+
+        let printErrors() =
+            printfn "%A" syntaxTree.lexErrors
+            for Parsing.SyntaxTree.PE (startPosition, endPosition, message, rest) in syntaxTree.parseErrors do
+                printfn "%A - %A: %s (+%i)" startPosition endPosition message (rest.Length)    
+
         if line = ";;ast" then
-            syntaxTree
-            |> Parsing.SyntaxNode.SyntaxNode.From
-            |> Parsing.SyntaxNode.SyntaxNode.WriteTo System.Console.Out
-        printfn "%A" syntaxTree.lexErrors
-        for Parsing.SyntaxTree.PE (startPosition, endPosition, message, rest) in syntaxTree.parseErrors do
-            printfn "%A - %A: %s (+%i)" startPosition endPosition message (rest.Length)
+            let syntaxNode =
+                syntaxTree
+                |> Parsing.SyntaxNode.SyntaxNode.From
+            syntaxNode |> Parsing.SyntaxNode.SyntaxNode.WriteTo System.Console.Out
+            printErrors()
+            syntaxNode |> Parsing.SyntaxNode.SyntaxNode.HighlightTo System.Console.Out
+            printfn ""
+        else
+            printErrors()
+        
 
 
 

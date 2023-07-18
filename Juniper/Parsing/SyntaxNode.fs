@@ -104,6 +104,53 @@ type ChildrenSyntaxNode(nodeKind: NodeKind, children: ISyntaxNode seq) =
         member __.Children = children
 
 type SyntaxNode =
+    static member HighlightTo (writer: System.IO.TextWriter) (node: ISyntaxNode) =
+        let print format = Printf.ksprintf (Printf.fprintf writer "%s") format
+        let isToConsole = writer = System.Console.Out
+        let setColor c =
+            if isToConsole then
+                System.Console.ForegroundColor <- c
+        let resetColor() =
+            if isToConsole then
+                System.Console.ResetColor()
+        let rec write hasError (node: ISyntaxNode) =
+            let writeTrivia (trivia: SyntaxTrivia) =
+                let color =
+                    match trivia.triviaKind with
+                    | LineBreakTrivia
+                    | WhiteSpaceTrivia -> System.ConsoleColor.White
+                    | SingleLineCommentTrivia
+                    | MultiLineCommentTrivia -> System.ConsoleColor.DarkGreen
+                    | BadTokenTrivia -> System.ConsoleColor.DarkRed
+                setColor color
+                print "%s" trivia.text
+                resetColor()
+            match node with
+            | :? TokenSyntaxNode as token ->
+                token.Token.leadingTrivia |> Seq.iter writeTrivia
+
+                let tokenColor =
+                    match token.Token.tokenKind with
+                    | KeywordToken _ -> System.ConsoleColor.Blue
+                    | IdentifierToken -> System.ConsoleColor.Yellow
+                    | IntLiteralToken
+                    | StringLiteralToken -> System.ConsoleColor.DarkYellow
+                    | _ -> System.ConsoleColor.White
+
+                setColor (if hasError then System.ConsoleColor.DarkRed else tokenColor)
+
+                token.Token.text |> Option.iter (print "%s")
+
+                token.Token.trailingTrivia |> Seq.iter writeTrivia
+
+                let hasError = token.Token.text |> Option.isNone
+
+                hasError
+            | _ ->
+                node.Children |> Seq.fold write hasError
+        write false node
+        |> ignore
+
     static member WriteTo (writer: System.IO.TextWriter) (node: ISyntaxNode) =
         let print format = Printf.ksprintf (Printf.fprintf writer "%s") format
         let isToConsole = writer = System.Console.Out
@@ -128,7 +175,7 @@ type SyntaxNode =
                     print "%s" marker
                     if x.triviaKind = BadTokenTrivia then
                         setColor System.ConsoleColor.DarkRed
-                        print "%s: %A %A" prefix x.triviaKind x.text
+                        print "%s: %A %A <%i:%i>" prefix x.triviaKind x.text x.startPos.lineIndex x.startPos.colIndex
                     else
                         setColor System.ConsoleColor.DarkGreen
                         print "%s: %A" prefix x.triviaKind
@@ -154,19 +201,21 @@ type SyntaxNode =
                 print "%s" indent
                 print "%s" tokenMarker
 
-                setColor (
-                    match token.Token.text with
-                    | Some _ -> System.ConsoleColor.Blue
-                    | None -> System.ConsoleColor.DarkRed
-                )
-                print "%A" token.Token.tokenKind
-                token.Token.value |> Option.iter (print " %A")
-                setColor (
-                    match token.Token.tokenKind with
-                    | KeywordToken _ -> System.ConsoleColor.DarkYellow
-                    | _ -> System.ConsoleColor.White
-                )
-                token.Token.text |> Option.iter (print " %s")
+                match token.Token.text with
+                | None ->
+                    setColor System.ConsoleColor.DarkRed
+                    print "%A <%i:%i>" token.Token.tokenKind token.Token.start.lineIndex token.Token.start.colIndex
+                | Some tokenText ->
+                    setColor System.ConsoleColor.Blue
+                    print "%A" token.Token.tokenKind
+                    token.Token.value |> Option.iter (print " %A")
+                    setColor (
+                        match token.Token.tokenKind with
+                        | KeywordToken _ -> System.ConsoleColor.DarkYellow
+                        | _ -> System.ConsoleColor.White
+                    )
+                    print " %s" tokenText
+
                 resetColor()
                 print "%s" System.Environment.NewLine
 
