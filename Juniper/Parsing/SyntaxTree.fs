@@ -232,15 +232,7 @@ and VariableDeclarationSyntax =
 and SetExpressionSyntax =
     {
         setKeyword: Token
-        leftAssign: LeftAssignSyntax
-        equalsToken: Token
-        expression: ExpressionSyntax
-    }
-
-and SetRefExpressionSyntax =
-    {
-        setKeyword: Token
-        refKeyword: Token
+        optionalRefKeyword: Token option
         leftAssign: LeftAssignSyntax
         equalsToken: Token
         expression: ExpressionSyntax
@@ -319,7 +311,6 @@ and ExpressionSyntax =
     | LetExpression of LetExpressionSyntax
     | VariableDeclaration of VariableDeclarationSyntax
     | SetExpression of SetExpressionSyntax
-    | SetRefExpression of SetRefExpressionSyntax
     | ForLoopExpression of ForLoopExpressionSyntax
     | DoWhileExpression of DoWhileExpressionSyntax
     | WhileDoExpression of WhileDoExpressionSyntax

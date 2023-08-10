@@ -8,6 +8,10 @@ open Lexer
 type ExpressionLeftRecursion =
     | FunctionCallLeftRecursion of Token * SeparatedSyntaxList<ExpressionSyntax> * Token
 
+type LeftAssignLeftRecursion =
+    | FieldAccessLeftAssignLeftRecursion of Token * Token
+    | IndexerLeftAssignLeftRecursion of Token * ExpressionSyntax * Token
+
 let rec parseModuleDefinition =
     lexerMode ExpressionMode (par {
         let! moduleName = parseModuleName
@@ -551,6 +555,93 @@ and parsePrimaryExpression : Parser<ExpressionSyntax> =
                 falseExpression = falseExpression
                 endKeyword = endKeyword
             }
+        | KeywordToken VarKeyword ->
+            let! varKeyword = matchToken (KeywordToken VarKeyword)
+            let! variableIdentifier = matchToken IdentifierToken
+            let! colonToken = matchToken ColonToken
+            let! variableType = parseTypeExpression
+            return VariableDeclaration {
+                varKeyword = varKeyword
+                variableIdentifier = variableIdentifier
+                colonToken = colonToken
+                variableType = variableType
+            }
+        | KeywordToken SetKeyword ->
+            let! setKeyword = matchToken (KeywordToken SetKeyword)
+            let! optionalRefKeyword =
+                nextToken
+                |> ifCurrentKind (KeywordToken RefKeyword)
+            let! leftAssign = parseLeftAssign
+            let! equalsToken = matchToken EqualsToken
+            let! expression = parseExpression
+            return SetExpression {
+                setKeyword = setKeyword
+                optionalRefKeyword = optionalRefKeyword
+                leftAssign = leftAssign
+                equalsToken = equalsToken
+                expression = expression
+            }
+        | KeywordToken ForKeyword ->
+            let! forKeyword = matchToken (KeywordToken ForKeyword)
+            let! identifier = matchToken IdentifierToken
+            let! optionalTyExpr =
+                pipe2
+                    (matchToken ColonToken)
+                    parseTypeExpression
+                    (fun colon tyExpr -> colon, tyExpr)
+                |> ifCurrentKind ColonToken
+            let! inKeyword = matchToken (KeywordToken InKeyword)
+            let! startExpression = parseExpression
+            let! direction =
+                par {
+                    match! currentKind with
+                    | KeywordToken DownToKeyword ->
+                        return! nextToken
+                    | _ ->
+                        return! matchToken (KeywordToken ToKeyword)
+                }
+            let! endExpression = parseExpression
+            let! doKeyword = matchToken (KeywordToken DoKeyword)
+            let! bodyExpression = parseExpression
+            let! endKeyword = matchToken (KeywordToken EndKeyword)
+            return ForLoopExpression {
+                forKeyword = forKeyword
+                identifier = identifier
+                optionalTyExpr = optionalTyExpr
+                inKeyword = inKeyword
+                startExpression = startExpression
+                direction = direction
+                endExpression = endExpression
+                doKeyword = doKeyword
+                bodyExpression = bodyExpression
+                endKeyword = endKeyword
+            }
+        | KeywordToken DoKeyword ->
+            let! doKeyword = matchToken (KeywordToken DoKeyword)
+            let! bodyExpression = parseExpression
+            let! whileKeyword = matchToken (KeywordToken WhileKeyword)
+            let! conditionExpression = parseExpression
+            let! endKeyword = matchToken (KeywordToken EndKeyword)
+            return DoWhileExpression {
+                doKeyword = doKeyword
+                bodyExpression = bodyExpression
+                whileKeyword = whileKeyword
+                conditionExpression = conditionExpression
+                endKeyword = endKeyword
+            }
+        | KeywordToken WhileKeyword ->
+            let! whileKeyword = matchToken (KeywordToken WhileKeyword)
+            let! conditionExpression = parseExpression
+            let! doKeyword = matchToken (KeywordToken DoKeyword)
+            let! bodyExpression = parseExpression
+            let! endKeyword = matchToken (KeywordToken EndKeyword)
+            return WhileDoExpression {
+                whileKeyword = whileKeyword
+                conditionExpression = conditionExpression
+                doKeyword = doKeyword
+                bodyExpression = bodyExpression
+                endKeyword = endKeyword
+            }
         (*
         | OpenBracketToken ->
             let! openBracket = nextToken
@@ -595,6 +686,79 @@ and parseElifBranch : Parser<ElifBranchSyntax option> =
             }
         | _ -> return None
     }
+
+and parseLeftAssign : Parser<LeftAssignSyntax> =
+    let tryParseOneLeftResursiveLeftAssign =
+        par {
+            match! currentKind with
+            | DotToken ->
+                let! dotToken = nextToken
+                let! fieldIdentifier = matchToken IdentifierToken
+                let fieldAccessLeftRecursion = FieldAccessLeftAssignLeftRecursion (dotToken, fieldIdentifier)
+                return Some fieldAccessLeftRecursion
+            | OpenBracketToken ->
+                let! openBracket = nextToken
+                let! indexExpression = parseExpression
+                let! closeBracket = matchToken CloseBracketToken
+                let indexerLeftRecursion = IndexerLeftAssignLeftRecursion (openBracket, indexExpression, closeBracket)
+                return Some indexerLeftRecursion
+            | _ -> return None
+        }
+    par {
+        match! currentKind with
+        | IdentifierToken ->
+            let! firstIdentifier = nextToken
+            let! currentToken = current
+            match! ret (firstIdentifier, currentToken) with
+            | ({ trailingTrivia = []}, { tokenKind = ColonToken; trailingTrivia = [] }) ->
+                // moduleName:
+                //           ^ 
+                let! colon = nextToken
+                let! moduleMember = matchToken IdentifierToken
+                return {
+                    moduleNameIdentifier = firstIdentifier
+                    colon = colon
+                    moduleDeclarationNameIdentifier = moduleMember
+                }
+                |> ModuleQualifierDeclarationReference
+                |> DeclarationReferenceLeftAssign
+            | _ ->
+                return 
+                    { declarationNameIdentifier = firstIdentifier }
+                    |> IdentifierDeclarationReference
+                    |> DeclarationReferenceLeftAssign
+                    
+        | _ ->
+            let! identifier = matchToken IdentifierToken
+            //do! skipSilent // maybe to not get into infinite loop?
+            return 
+                { declarationNameIdentifier = identifier }
+                |> IdentifierDeclarationReference
+                |> DeclarationReferenceLeftAssign
+    }
+    |> fun primaryLeftAssignParser ->
+        par {
+            let! leftAssign = primaryLeftAssignParser
+            let! leftRecursions = many tryParseOneLeftResursiveLeftAssign
+            return
+                leftRecursions
+                |> List.fold (fun leftAssign leftRecursion ->
+                    match leftRecursion with
+                    | FieldAccessLeftAssignLeftRecursion (dotToken, fieldIdentifier) ->
+                        RecordMemberLeftAssign {
+                            recordLeftAssign = leftAssign
+                            memberAccess = dotToken
+                            memberIdentifier = fieldIdentifier
+                        }
+                    | IndexerLeftAssignLeftRecursion (openBracket, indexExpression, closeBracket) ->
+                        ArrayAccessLeftAssign {
+                            arrayLeftAssign = leftAssign
+                            openBracket = openBracket
+                            indexExpression = indexExpression
+                            closeBracket = closeBracket
+                        }
+                ) leftAssign
+        }
 
 and parseCaseClause : Parser<CaseClauseSyntax> =
     pipe3

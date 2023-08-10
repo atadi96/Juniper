@@ -74,6 +74,15 @@ let getKeyword (text: string) =
     | "elif" -> Some ElifKeyword
     | "then" -> Some ThenKeyword
     | "else" -> Some ElseKeyword
+    | "var" -> Some VarKeyword
+    | "set" -> Some SetKeyword
+    | "for" -> Some ForKeyword
+    | "in" -> Some InKeyword
+    | "to" -> Some ToKeyword
+    | "downto" -> Some DownToKeyword
+    | "do" -> Some DoKeyword
+    | "while" -> Some WhileKeyword
+    | "array" -> Some ArrayKeyword
     | _ -> None
 
 let keywordText (keyword: Keyword) =
@@ -117,6 +126,15 @@ let keywordText (keyword: Keyword) =
     | ElifKeyword -> "elif"
     | ThenKeyword -> "then"
     | ElseKeyword -> "else"
+    | VarKeyword -> "var"
+    | SetKeyword -> "set"
+    | ForKeyword -> "for"
+    | InKeyword -> "in"
+    | ToKeyword -> "to"
+    | DownToKeyword -> "downto"
+    | DoKeyword -> "do"
+    | WhileKeyword -> "while"
+    | ArrayKeyword -> "array"
 
 let getKeywordBaseType (keyword: Keyword) =
     match keyword with

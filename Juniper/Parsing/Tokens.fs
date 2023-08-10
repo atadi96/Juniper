@@ -68,6 +68,15 @@ type Keyword =
     | ThenKeyword
     | ElifKeyword
     | ElseKeyword
+    | VarKeyword
+    | ArrayKeyword
+    | SetKeyword
+    | ForKeyword
+    | InKeyword
+    | ToKeyword
+    | DownToKeyword
+    | DoKeyword
+    | WhileKeyword
 
 type TokenKind =
     | BadToken
@@ -110,6 +119,7 @@ type TokenKind =
     | IntLiteralToken
     | IdentifierToken
     | TypeVariableIdentifierToken
+    | DotToken
 
 type SyntaxTriviaKind =
     | SingleLineCommentTrivia

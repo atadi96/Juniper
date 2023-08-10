@@ -125,6 +125,8 @@ module private Lexer =
           [
             eof >>% TokenKind EndOfFileToken
 
+            skipChar '.' >>% TokenKind DotToken
+
             skipChar '+' >>% TokenKind PlusToken
             skipChar '-' >>. (skipChar '>' >>% TokenKind ArrowToken <|> preturn (TokenKind MinusToken))
             
@@ -228,6 +230,7 @@ module private Lexer =
             | SemicolonToken -> k, ";", None
             | ArrowToken -> k, "->", None
             | DoubleArrowToken -> k, "=>", None
+            | DotToken -> k, ".", None
             | BadToken
             | IdentifierToken
             | TypeVariableIdentifierToken

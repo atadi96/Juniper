@@ -282,7 +282,7 @@ type SyntaxNode =
           SyntaxNode.From idWithType.requiredType
         ]
 
-    static member From(token) = TokenSyntaxNode(token) :> ISyntaxNode
+    static member From(token: Token) = TokenSyntaxNode(token) :> ISyntaxNode
     static member fromChildren nodeKind children = ChildrenSyntaxNode(nodeKind, children) :> ISyntaxNode
     static member From(this: ModuleDefinitionSyntax) =
         SyntaxNode.fromChildren (ModuleDefinitionKind) [ yield SyntaxNode.From this.moduleName; yield! this.declarations |> Seq.map SyntaxNode.From ]
@@ -563,18 +563,10 @@ type SyntaxNode =
             SyntaxNode.fromChildren
                 SetExpressionKind
                 [ SyntaxNode.From setExpression.setKeyword
+                  yield! setExpression.optionalRefKeyword |> SyntaxNode.FromOption SyntaxNode.From 
                   SyntaxNode.From setExpression.leftAssign
                   SyntaxNode.From setExpression.equalsToken
                   SyntaxNode.From setExpression.expression
-                ]
-        | SetRefExpression setRefExpression ->
-            SyntaxNode.fromChildren
-                SetRefExpressionKind
-                [ SyntaxNode.From setRefExpression.setKeyword
-                  SyntaxNode.From setRefExpression.refKeyword
-                  SyntaxNode.From setRefExpression.leftAssign
-                  SyntaxNode.From setRefExpression.equalsToken
-                  SyntaxNode.From setRefExpression.expression
                 ]
         | ForLoopExpression forLoopExpression ->
             SyntaxNode.fromChildren
@@ -623,7 +615,7 @@ type SyntaxNode =
               SyntaxNode.From this.memberAccess
               SyntaxNode.From this.memberIdentifier
             ]
-    static member From(this: LeftAssignSyntax) =
+    static member From(this: LeftAssignSyntax): ISyntaxNode =
         match this with
         | DeclarationReferenceLeftAssign declarationReference ->
             SyntaxNode.fromChildren DeclarationReferenceLeftAssignKind [SyntaxNode.From declarationReference]
