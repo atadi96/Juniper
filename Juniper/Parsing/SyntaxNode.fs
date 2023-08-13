@@ -103,6 +103,12 @@ type ChildrenSyntaxNode(nodeKind: NodeKind, children: ISyntaxNode seq) =
         member __.FullEnd = last.FullEnd
         member __.Children = children
 
+open SyntaxTree.Patterns
+open SyntaxTree.Declarations
+open SyntaxTree.Expressions
+open SyntaxTree.Types
+open SyntaxTree.Modules
+
 type SyntaxNode =
     static member HighlightTo (writer: System.IO.TextWriter) (node: ISyntaxNode) =
         let print format = Printf.ksprintf (Printf.fprintf writer "%s") format
