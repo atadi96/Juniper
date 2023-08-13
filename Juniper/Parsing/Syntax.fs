@@ -28,6 +28,7 @@ let parseDeclarationReference : Parser<DeclarationReferenceSyntax> =
     }
 
 module rec Types =
+    open SyntaxTree.Types
 
     let private parseClosureTypeExpression : Parser<ClosureTypeExpressionSyntax> =
         par {
@@ -193,6 +194,8 @@ let parseTemplateApplication : Parser<TemplateApplicationSyntax> =
     )
 
 module Patterns =
+    open SyntaxTree.Patterns
+
     let rec parsePattern : Parser<PatternSyntax> =
         par {
             match! currentKind with
@@ -310,6 +313,8 @@ module Patterns =
         }
     
 module rec Expressions =
+    open SyntaxTree.Expressions
+
     type private ExpressionLeftRecursion =
         | FunctionCallLeftRecursion of Token * SeparatedSyntaxList<ExpressionSyntax> * Token
 
@@ -687,6 +692,8 @@ module rec Expressions =
             }
 
 module Declarations =
+    open SyntaxTree.Declarations
+
     let private parseOpenModules : Parser<OpenModulesSyntax> =
         pipe4
             (matchToken (KeywordToken OpenKeyword))
@@ -880,6 +887,8 @@ module Declarations =
         }
 
 module Modules =
+    open SyntaxTree.Modules
+
     let private parseModuleName : Parser<ModuleNameSyntax> =
         par {
             let! moduleKeyword = matchToken (KeywordToken ModuleKeyword)
