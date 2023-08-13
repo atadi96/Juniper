@@ -20,9 +20,19 @@ module Position =
     let toFParsec (pos: Position) =
         FParsec.Position(pos.streamName, pos.index, int64 pos.lineIndex + 1L, int64 pos.colIndex + 1L)
 
+type IntSuffix =
+    | Int8Suffix
+    | Int16Suffix
+    | Int32Suffix
+    | Int64Suffix
+    | UInt8Suffix
+    | UInt16Suffix
+    | UInt32Suffix
+    | UInt64Suffix
+
 type TokenValue =
     | TextValue of string
-    | IntValue of int64
+    | IntValue of int64 * IntSuffix option
     | BaseTypeValue of Ast.BaseTypes
     | TypeVariableIdentifierValue of string
     | InlineCppCodeValue of string

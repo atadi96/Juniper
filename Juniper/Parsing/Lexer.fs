@@ -25,7 +25,7 @@ type LexerMode =
 module private Lexer =
     type TokenData =
          | TokenKind of TokenKind
-         | IntLiteralTokenData of int64
+         | IntLiteralTokenData of int64 * IntSuffix option
          | BadTokenData of char
          | BaseTypeKeywordData of Keyword * Ast.BaseTypes
          | InlineCppTokenData of string
@@ -170,7 +170,19 @@ module private Lexer =
             followedByString "#" >>. (inlineCppToken |> Parse.fatalizeAnyError) |> reportUnterminated "inline C++ code" InlineCppTokenData
             
             
-            followedBy digit >>. pint64 |>> IntLiteralTokenData
+            followedBy digit
+                >>. pint64
+                .>>. choice [
+                    skipString "i8" >>% Some Int8Suffix
+                    skipString "i16" >>% Some Int16Suffix
+                    skipString "i32" >>% Some Int32Suffix
+                    skipString "i64" >>% Some Int64Suffix
+                    skipString "u8" >>% Some UInt8Suffix
+                    skipString "u16" >>% Some UInt16Suffix
+                    skipString "u32" >>% Some UInt32Suffix
+                    skipString "u64" >>% Some UInt64Suffix
+                    preturn None
+                ] |>> IntLiteralTokenData
             
             followedBy (asciiLetter <|> pchar '_') >>. Parse.id |>> getKeywordOrIdentifierTokenData
 
@@ -179,7 +191,19 @@ module private Lexer =
 
     let tokenArgsFromData = function
         | BadTokenData c -> BadToken, string c, None
-        | IntLiteralTokenData i -> IntLiteralToken, string i, Some (IntValue i)
+        | IntLiteralTokenData (i, suffix) ->
+            let suffixText =
+                match suffix with
+                | Some Int8Suffix -> "i8"
+                | Some Int16Suffix -> "i16"
+                | Some Int32Suffix -> "i32"
+                | Some Int64Suffix -> "i64"
+                | Some UInt8Suffix -> "u8"
+                | Some UInt16Suffix -> "i16"
+                | Some UInt32Suffix -> "i32"
+                | Some UInt64Suffix -> "i64"
+                | None -> ""
+            IntLiteralToken, (sprintf "%i%s" i suffixText), Some (IntValue (i,suffix))
         | IdentifierTokenData identifierText -> IdentifierToken, identifierText, None
         | BaseTypeKeywordData (keyword, baseType) ->
             KeywordToken keyword, (SyntaxFacts.keywordText keyword), Some (BaseTypeValue baseType)
