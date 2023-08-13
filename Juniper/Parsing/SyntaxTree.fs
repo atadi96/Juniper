@@ -251,6 +251,16 @@ module Expressions =
             caseClauses: SeparatedNonEmptySyntaxList<CaseClauseSyntax>
             endKeyword: Token
         }
+
+    and SmartPointerSyntax =
+        {
+            smartPointerKeyword: Token
+            openParenthesis: Token
+            valueExpression: ExpressionSyntax
+            comma: Token
+            destructorExpression: ExpressionSyntax
+            closeParenthesis: Token
+        }
     
     and ExpressionSyntax =
         | UnitLiteralExpression of Token * Token
@@ -275,6 +285,7 @@ module Expressions =
         | DoWhileExpression of DoWhileExpressionSyntax
         | WhileDoExpression of WhileDoExpressionSyntax
         | LambdaExpression of LambdaExpressionSyntax
+        | SmartPointerExpression of SmartPointerSyntax
     
     and ArrayAccessLeftAssignSyntax =
         {

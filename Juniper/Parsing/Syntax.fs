@@ -563,6 +563,21 @@ module rec Expressions =
                 let! closeBracket = matchToken CloseBracketToken
                 return ??? // is in the ebnf file but not in the original parser..?
             *)
+            | KeywordToken SmartPointerKeyword ->
+                let! smartPointerKeyword = nextToken
+                let! openParenthesis = matchToken OpenParenthesisToken
+                let! valueExpression = parseExpression
+                let! comma = matchToken CommaToken
+                let! destructorExpression = parseExpression
+                let! closeParenthesis = matchToken CloseParenthesisToken
+                return SmartPointerExpression {
+                    smartPointerKeyword = smartPointerKeyword
+                    openParenthesis = openParenthesis
+                    valueExpression = valueExpression
+                    comma = comma
+                    destructorExpression = destructorExpression
+                    closeParenthesis = closeParenthesis
+                }
             | _ ->
                 return! matchToken IntLiteralToken |> map NumberExpressionSyntax
         }

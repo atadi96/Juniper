@@ -249,6 +249,18 @@ let ifCurrentKind peekKind parser =
         else
             return None
     }
+
+let rec choice parsers: Parser<_> =
+    match parsers with
+    | [] -> ret None
+    | p :: ps ->
+        par {
+            match! p with
+            | Some x ->
+                return Some x
+            | None ->
+                return! choice ps
+        }
     
 let peek1 : Parser<Token> =
     fun (lexer,state) ->

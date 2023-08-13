@@ -83,6 +83,7 @@ let getKeyword (text: string) =
     | "do" -> Some DoKeyword
     | "while" -> Some WhileKeyword
     | "array" -> Some ArrayKeyword
+    | "smartpointer" -> Some SmartPointerKeyword
     | _ -> None
 
 let keywordText (keyword: Keyword) =
@@ -135,6 +136,7 @@ let keywordText (keyword: Keyword) =
     | DoKeyword -> "do"
     | WhileKeyword -> "while"
     | ArrayKeyword -> "array"
+    | SmartPointerKeyword -> "smartpointer"
 
 let getKeywordBaseType (keyword: Keyword) =
     match keyword with

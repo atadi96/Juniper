@@ -87,6 +87,7 @@ type Keyword =
     | DownToKeyword
     | DoKeyword
     | WhileKeyword
+    | SmartPointerKeyword
 
 type TokenKind =
     | BadToken
