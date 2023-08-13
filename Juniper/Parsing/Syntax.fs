@@ -1,258 +1,11 @@
-﻿module rec Parsing.Syntax
+﻿module Parsing.Syntax
 
 open Parsing.Parser
 open SyntaxTree
 open Tokens
 open Lexer
-    
-type ExpressionLeftRecursion =
-    | FunctionCallLeftRecursion of Token * SeparatedSyntaxList<ExpressionSyntax> * Token
 
-type LeftAssignLeftRecursion =
-    | FieldAccessLeftAssignLeftRecursion of Token * Token
-    | IndexerLeftAssignLeftRecursion of Token * ExpressionSyntax * Token
-
-let parseModuleDefinition =
-    lexerMode ExpressionMode (par {
-        let! moduleName = parseModuleName
-        let! declarations =
-            manyWhile
-                (currentKind |> map ((<>) EndOfFileToken))
-                Declarations.parseDeclaration
-        return {
-            moduleName = moduleName
-            declarations = declarations
-        }
-    })
-
-let parseModuleName : Parser<ModuleNameSyntax> =
-    par {
-        let! moduleKeyword = matchToken (KeywordToken ModuleKeyword)
-        let! moduleName = matchToken (IdentifierToken)
-        return {
-            moduleKeyword = moduleKeyword
-            moduleNameIdentifier = moduleName
-        }
-    }
-
-let parseTemplateApplication : Parser<TemplateApplicationSyntax> =
-    lexerMode TypeMode (
-        pipe3
-            (matchToken LessThanToken)
-            (many1Sep Types.parseTypeExpression CommaToken)
-            (matchToken GreaterThanToken)
-            (fun lt types gt -> {
-                lessThanSign = lt
-                templateApplicationTypes = types
-                greaterThanSign = gt
-            }) 
-    )
-
-module Declarations =
-
-    let parseDeclaration : Parser<DeclarationSyntax> =
-        let isDeclarationStart tokenKind =
-            match tokenKind with
-            | KeywordToken OpenKeyword
-            | KeywordToken LetKeyword
-            | KeywordToken TypeKeyword
-            | KeywordToken AliasKeyword
-            | KeywordToken FunKeyword
-            | InlineCppToken -> true
-            | _ -> false
-
-        par {
-            match! currentKind with
-            | KeywordToken OpenKeyword ->
-                let! openModules = parseOpenModules
-                return OpenModulesDeclarationSyntax openModules
-            | KeywordToken LetKeyword ->
-                let! letDeclaration = parseLetDeclaration
-                return LetDeclarationSyntax letDeclaration
-            | KeywordToken TypeKeyword ->
-                let! algebraicType = lexerMode TypeMode parseAlgebraicType
-                return AlgebraicTypeSyntax algebraicType
-            | KeywordToken AliasKeyword ->
-                let! alias = lexerMode TypeMode parseAlias
-                return AliasSyntax alias
-            | KeywordToken FunKeyword ->
-                let! func = parseFunctionDeclaration
-                return FunctionDeclarationSyntax func
-            | InlineCppToken ->
-                let! inlineCpp = nextToken
-                return InlineCppDeclarationSyntax inlineCpp
-            | _ ->
-                // token is not recognized as top level declaration: skip to the next possible declaration
-                // give a syntax error
-                let! _ = matchToken (KeywordToken LetKeyword)
-                // and skip all tokens until we find a token that can start a declaration, or reach the end of the token
-                let tokenKindShouldBeSkipped tokenKind =
-                    tokenKind <> EndOfFileToken && not (tokenKind |> isDeclarationStart)
-
-                let! _ = manyWhile (currentKind |> map tokenKindShouldBeSkipped) skipSilent
-
-                // TODO another recovery tactic: if we find a = we can try to parse an expression or a type, though which one I don't know
-
-                // and try again if it's not the end of the file
-                match! currentKind with
-                | EndOfFileToken ->
-                    // if it's EOF, let's report that we're wanting a let declaration so that we can return something
-                    let! letDeclaration = parseLetDeclaration
-                    return LetDeclarationSyntax letDeclaration
-                | _ ->
-                    //otherwise just try again
-                    return! parseDeclaration
-        }
-
-    let parseOpenModules : Parser<OpenModulesSyntax> =
-        pipe4
-            (matchToken (KeywordToken OpenKeyword))
-            (matchToken OpenParenthesisToken)
-            (manySep (matchToken IdentifierToken) CommaToken CloseParenthesisToken)
-            (matchToken CloseParenthesisToken)
-            OpenModulesSyntax.Create
-
-    let parseTemplateDec : Parser<TemplateDeclarationSyntax> =
-        let parseTypeVariableIdentifier =
-            par {
-                match! currentKind with
-                | IdentifierToken ->
-                    let! typeVariableIdentifier = matchToken TypeVariableIdentifierToken
-                    let! () = skipSilent
-                    return typeVariableIdentifier
-                | _ ->
-                    return! matchToken TypeVariableIdentifierToken
-            }
-        lexerMode TypeMode (
-            pipe3
-                (matchToken (LessThanToken))
-                (many1Sep parseTypeVariableIdentifier CommaToken)
-                (matchToken (GreaterThanToken))
-                (fun lt typeVariables gt -> {
-                    lessThanSign = lt
-                    typeVariables = typeVariables
-                    greaterThanSign = gt
-                })
-        )
-
-    let parseAlgebraicType : Parser<AlgebraicTypeSyntax> =
-        par {
-            let! typeKeyword = matchToken (KeywordToken TypeKeyword)
-            let! typeIdentifier = matchToken (IdentifierToken)
-            let! optionalTemplateDeclaration =
-                parseTemplateDec
-                |> ifCurrentKind LessThanToken
-            let! equals = matchToken EqualsToken
-            let skipUnnecessaryFirstPipe =
-                par {
-                    match! currentKind with
-                    | PipeToken ->
-                        // if there's an unnecessary pipe token before the first value constructor, skip it
-                        let! _error = matchToken IdentifierToken
-                        do! skipSilent
-                    | _ ->
-                        return ()
-                }
-            do! skipUnnecessaryFirstPipe
-            let! valueConstructors =
-                many1Sep parseValueConstructor PipeToken
-            return {
-                typeKeyword = typeKeyword
-                algebraicTypeIdentifier = typeIdentifier
-                optionalTemplateDeclaration = optionalTemplateDeclaration
-                equals = equals
-                valueConstructors = valueConstructors
-            }
-        }
-
-    let parseAlias : Parser<AliasSyntax> =
-        par {
-            let! aliasKeyword = matchToken (KeywordToken AliasKeyword)
-            let! aliasIdentifier = matchToken (IdentifierToken)
-            let! optionalTemplateDeclaration =
-                parseTemplateDec
-                |> ifCurrentKind LessThanToken
-            let! equals = matchToken EqualsToken
-            let! aliasOfType = Types.parseTypeExpression
-            return {
-                aliasKeyword = aliasKeyword
-                aliasIdentifier = aliasIdentifier
-                optionalTemplateDeclaration = optionalTemplateDeclaration
-                equals = equals
-                aliasOfType = aliasOfType
-            }
-        }
-
-    let parseValueConstructor : Parser<ValueConstructorSyntax> =
-        par {
-            let! valueConstructorIdentifier = matchToken IdentifierToken
-            let! openParenthesis = matchToken OpenParenthesisToken
-            let! valueConstructorParameterTypes =
-                manySep Types.parseTypeExpression CommaToken CloseParenthesisToken
-            let! closeParenthesis = matchToken CloseParenthesisToken
-            return {
-                valueConstructorIdentifier = valueConstructorIdentifier
-                openParenthesis = openParenthesis
-                valueConstructorParameterTypes = valueConstructorParameterTypes
-                closeParenthesis = closeParenthesis
-            }
-        }
-
-    let parseLetDeclaration : Parser<LetDeclarationSyntax> =
-        par {
-            let! letKeyword = matchToken (KeywordToken LetKeyword)
-            let! identifier = matchToken IdentifierToken
-            let! optionalType = parseOptionalType
-            let! equals = matchToken EqualsToken
-            let! body = Expressions.parseExpression
-            return {
-                letKeyword = letKeyword
-                identifier = identifier
-                optionalType = optionalType
-                equals = equals
-                body = body
-            }
-        }
-
-    let parseFunctionDeclaration : Parser<FunctionDeclarationSyntax> =
-        par {
-            let! funKeyword = matchToken (KeywordToken FunKeyword)
-            let! identifier = matchToken IdentifierToken
-            let! optionalTemplateDeclaration =
-                parseTemplateDec
-                |> ifCurrentKind LessThanToken
-            let! openParenthesis = matchToken OpenParenthesisToken
-            let! functionArguments =
-                manySep parseIdentifierWithOptionalType CommaToken CloseParenthesisToken
-            let! closeParenthesis = matchToken CloseParenthesisToken
-            // TODO constraints
-            let! optionalType = parseOptionalType
-            let! equal = matchToken EqualsToken
-            let! functionBody = Expressions.parseExpression
-            return {
-                funKeyword = funKeyword
-                identifier = identifier
-                optionalTemplateDeclaration = optionalTemplateDeclaration
-                openParenthesis = openParenthesis
-                functionArguments = functionArguments
-                closeParenthesis = closeParenthesis
-                optionalType = optionalType
-                equals = equal
-                functionBody = functionBody
-            }
-        }
-
-let rec parseIdentifierWithOptionalType : Parser<IdentifierWithOptionalType> =
-    par {
-        let! identifier = matchToken IdentifierToken
-        let! optionalType = parseOptionalType
-        return {
-            identifier = identifier
-            optionalType = optionalType
-        }
-    }
-
-and parseDeclarationReference : Parser<DeclarationReferenceSyntax> =
+let parseDeclarationReference : Parser<DeclarationReferenceSyntax> =
     par {
         let! identifier = matchToken IdentifierToken
         let optionalModuleDeclarationAccess =
@@ -274,13 +27,13 @@ and parseDeclarationReference : Parser<DeclarationReferenceSyntax> =
             }
     }
 
-module Types =
+module rec Types =
 
-    let parseClosureTypeExpression : Parser<ClosureTypeExpressionSyntax> =
+    let private parseClosureTypeExpression : Parser<ClosureTypeExpressionSyntax> =
         par {
             let! openPipe = matchToken PipeToken
             let! capturedVariables =
-                manySep Syntax.parseIdentifierWithType SemicolonToken PipeToken
+                manySep parseIdentifierWithType SemicolonToken PipeToken
             let! closePipe = matchToken PipeToken
             return {
                 openPipe = openPipe
@@ -289,7 +42,7 @@ module Types =
             }
         }
 
-    let parseFunctionTypeExpressionStartingFromArguments : Parser<Token * ClosureOfFunctionSyntax * Token -> FunctionTypeExpressionSyntax> =
+    let private parseFunctionTypeExpressionStartingFromArguments : Parser<Token * ClosureOfFunctionSyntax * Token -> FunctionTypeExpressionSyntax> =
         par {
             let! argumentsOpenParenthesis = matchToken OpenParenthesisToken
             let! argumentTypes = manySep parseTypeExpression CommaToken CloseParenthesisToken
@@ -391,8 +144,174 @@ module Types =
                 //let! _skip = skipSilent // this hurts recovery from e.g. "alias a = { a: a; a: }" so let's turn it off for now? idk why it was added
                 return unitType |> BuiltInTypeExpression
         })
+
+
+    let parseIdentifierWithType : Parser<IdentifierWithType> =
+        pipe3
+            (matchToken IdentifierToken)
+            (matchToken ColonToken)
+            (Types.parseTypeExpression)
+            (fun identifier colon typeExpression ->
+                {
+                    identifier = identifier
+                    colon = colon
+                    requiredType = typeExpression
+                }
+            )
+
+    let parseOptionalType : Parser<(Token * TypeExpressionSyntax) option> =
+        lexerMode TypeMode (
+            pipe2
+                (matchToken ColonToken)
+                Types.parseTypeExpression
+                (fun colon typeExpression -> colon, typeExpression)
+            |> ifCurrentKind ColonToken
+        )
+        
+    let parseIdentifierWithOptionalType : Parser<IdentifierWithOptionalType> =
+        par {
+            let! identifier = matchToken IdentifierToken
+            let! optionalType = parseOptionalType
+            return {
+                identifier = identifier
+                optionalType = optionalType
+            }
+        }
+
+
+let parseTemplateApplication : Parser<TemplateApplicationSyntax> =
+    lexerMode TypeMode (
+        pipe3
+            (matchToken LessThanToken)
+            (many1Sep Types.parseTypeExpression CommaToken)
+            (matchToken GreaterThanToken)
+            (fun lt types gt -> {
+                lessThanSign = lt
+                templateApplicationTypes = types
+                greaterThanSign = gt
+            }) 
+    )
+
+module Patterns =
+    let rec parsePattern : Parser<PatternSyntax> =
+        par {
+            match! currentKind with
+            | KeywordToken MutableKeyword ->
+                let! mutableKeyword = nextToken
+                let! identifier = Types.parseIdentifierWithOptionalType
+                return VariablePattern {
+                    mutableKeyword = Some mutableKeyword
+                    variablePatternIdentifier = identifier.identifier
+                    optionalType = identifier.optionalType
+                }
+            | KeywordToken TrueKeyword ->
+                return! nextToken |> map TruePattern
+            | KeywordToken FalseKeyword ->
+                return! nextToken |> map FalsePattern
+            | IntLiteralToken ->
+                return! nextToken |> map IntegerPattern
+            | IdentifierToken ->
+                let! firstIdentifier = nextToken
+                let! currentToken = current
+                match! ret (firstIdentifier, currentToken) with
+                // all cases we have to cover:
+                // module:member[<...>](...)
+                // id<...>(...)
+                // id(...)
+                // id: ty
+                // id :ty
+                // id : ty
+                // _
+                // id
+                | ({ trailingTrivia = []}, { tokenKind = ColonToken; trailingTrivia = [] }) ->
+                    // moduleName:
+                    //           ^ 
+                    let! colon = nextToken
+                    let! moduleMember = matchToken IdentifierToken
+                    let! restOfValCon = parseValConRest
+                    return
+                        ModuleQualifierDeclarationReference {
+                            moduleNameIdentifier = firstIdentifier
+                            colon = colon
+                            moduleDeclarationNameIdentifier = moduleMember
+                        }
+                        |> restOfValCon
+                | (_, { tokenKind = LessThanToken })
+                | (_, { tokenKind = OpenParenthesisToken }) ->
+                    // id<
+                    //   ^
+                    // -or-
+                    // id(
+                    //   ^
+                    let! restOfValcon = parseValConRest
+                    return
+                        IdentifierDeclarationReference {
+                            declarationNameIdentifier = firstIdentifier
+                        }
+                        |> restOfValcon
+                | (_, { tokenKind = ColonToken }) ->
+                    // id: ty
+                    //   ^
+                    // -or-
+                    // id : ty
+                    //    ^
+                    // -or-
+                    // id :ty
+                    //    ^
+                    let! optionalType = Types.parseOptionalType
+                    return VariablePattern {
+                        mutableKeyword = None
+                        variablePatternIdentifier = firstIdentifier
+                        optionalType = optionalType
+                    }
+                | ({ text = Some "_"}, _) ->
+                    // _
+                    //  ^
+                    return UnderscorePattern firstIdentifier
+                | _ ->
+                    return VariablePattern {
+                        mutableKeyword = None
+                        variablePatternIdentifier = firstIdentifier
+                        optionalType = None
+                    }
+            | OpenParenthesisToken ->
+                let! openParenthesis = nextToken
+                let! closeParenthesis = matchToken CloseParenthesisToken
+                return UnitPattern (openParenthesis, closeParenthesis)
+                // TODO tuple
+                // TODO parenthesized pattern
+
+            | _ ->
+                let! identifier = matchToken IdentifierToken
+                return VariablePattern {
+                    mutableKeyword = None
+                    variablePatternIdentifier = identifier
+                    optionalType = None
+                }
+        }
+
+    and parseValConRest : Parser<DeclarationReferenceSyntax -> PatternSyntax> =
+        par {
+            let! optionalTemplateApplication =
+                parseTemplateApplication
+                |> ifCurrentKind LessThanToken
+            let! openParenthesis = matchToken OpenParenthesisToken
+            let! valConArguments =
+                manySep parsePattern CommaToken CloseParenthesisToken
+            let! closeParenthesis = matchToken CloseParenthesisToken
+            return fun declarationReference ->
+                ValConPattern {
+                    valConDeclarationReference = declarationReference
+                    optionalTemplateApplication = optionalTemplateApplication
+                    openParenthesis = openParenthesis
+                    valConArguments = valConArguments
+                    closeParenthesis = closeParenthesis
+                }
+        }
     
-module Expressions =
+module rec Expressions =
+    type private ExpressionLeftRecursion =
+        | FunctionCallLeftRecursion of Token * SeparatedSyntaxList<ExpressionSyntax> * Token
 
     let parseExpression : Parser<ExpressionSyntax> =
         par {
@@ -402,7 +321,7 @@ module Expressions =
                 return! parseBinaryExpression 0
         }
 
-    let parseBinaryExpression (parentPrecedence: int) =
+    let private parseBinaryExpression (parentPrecedence: int) =
         let rec binaryRight left =
             par {
                 match! currentKind |> map SyntaxFacts.getBinaryOperatorPrecedence with
@@ -426,22 +345,7 @@ module Expressions =
             return! binaryRight left
         }
 
-    (*
-    while (true)
-    {
-        var precedence = Current.Kind.GetBinaryOperatorPrecedence();
-        if (precedence == 0 || precedence <= parentPrecedence)
-            break;
-
-        var operatorToken = NextToken();
-        var right = ParseBinaryExpression(precedence);
-        left = new BinaryExpressionSyntax(_syntaxTree, left, operatorToken, right);
-    }
-
-    return left;
-    *)
-
-    let parsePrimaryExpression : Parser<ExpressionSyntax> =
+    let private parsePrimaryExpression : Parser<ExpressionSyntax> =
         let tryParseOneLeftRecursiveTerm: Parser<ExpressionLeftRecursion option> =
             par {
                 match! currentKind with
@@ -510,9 +414,9 @@ module Expressions =
             | KeywordToken FnKeyword ->
                 let! fnKeyword = nextToken
                 let! openParenthesis = matchToken OpenParenthesisToken
-                let! arguments = manySep parseIdentifierWithOptionalType CommaToken CloseParenthesisToken
+                let! arguments = manySep Types.parseIdentifierWithOptionalType CommaToken CloseParenthesisToken
                 let! closeParenthesis = matchToken CloseParenthesisToken
-                let! optionalReturnType = parseOptionalType
+                let! optionalReturnType = Types.parseOptionalType
                 let! arrow = matchToken ArrowToken
                 let! bodyExpression = parseExpression
                 let! endKeyword = matchToken (KeywordToken EndKeyword)
@@ -675,7 +579,7 @@ module Expressions =
                     ) expression
             }
 
-    let parseElifBranch : Parser<ElifBranchSyntax option> =
+    let private parseElifBranch : Parser<ElifBranchSyntax option> =
         par {
             match! currentKind with
             | KeywordToken ElifKeyword ->
@@ -692,11 +596,11 @@ module Expressions =
             | _ -> return None
         }
         
-    let parseCaseClause : Parser<CaseClauseSyntax> =
+    let private parseCaseClause : Parser<CaseClauseSyntax> =
         pipe3
             Patterns.parsePattern
             (matchToken DoubleArrowToken)
-            Expressions.parseExpression
+            parseExpression
             (fun pattern doubleArrow expression ->
                 {
                     pattern = pattern
@@ -704,10 +608,12 @@ module Expressions =
                     expression = expression
                 }
             )
+    
+    type private LeftAssignLeftRecursion =
+        | FieldAccessLeftAssignLeftRecursion of Token * Token
+        | IndexerLeftAssignLeftRecursion of Token * ExpressionSyntax * Token
 
-module LeftAssigns =
-
-    let rec parseLeftAssign : Parser<LeftAssignSyntax> =
+    let private parseLeftAssign : Parser<LeftAssignSyntax> =
         let tryParseOneLeftResursiveLeftAssign =
             par {
                 match! currentKind with
@@ -747,7 +653,7 @@ module LeftAssigns =
                         { declarationNameIdentifier = firstIdentifier }
                         |> IdentifierDeclarationReference
                         |> DeclarationReferenceLeftAssign
-                    
+                        
             | _ ->
                 let! identifier = matchToken IdentifierToken
                 //do! skipSilent // maybe to not get into infinite loop?
@@ -780,149 +686,226 @@ module LeftAssigns =
                     ) leftAssign
             }
 
-module Patterns =
+module Declarations =
+    let private parseOpenModules : Parser<OpenModulesSyntax> =
+        pipe4
+            (matchToken (KeywordToken OpenKeyword))
+            (matchToken OpenParenthesisToken)
+            (manySep (matchToken IdentifierToken) CommaToken CloseParenthesisToken)
+            (matchToken CloseParenthesisToken)
+            OpenModulesSyntax.Create
 
-    let parsePattern : Parser<PatternSyntax> =
-        par {
-            match! currentKind with
-            | KeywordToken MutableKeyword ->
-                let! mutableKeyword = nextToken
-                let! identifier = parseIdentifierWithOptionalType
-                return VariablePattern {
-                    mutableKeyword = Some mutableKeyword
-                    variablePatternIdentifier = identifier.identifier
-                    optionalType = identifier.optionalType
-                }
-            | KeywordToken TrueKeyword ->
-                return! nextToken |> map TruePattern
-            | KeywordToken FalseKeyword ->
-                return! nextToken |> map FalsePattern
-            | IntLiteralToken ->
-                return! nextToken |> map IntegerPattern
-            | IdentifierToken ->
-                let! firstIdentifier = nextToken
-                let! currentToken = current
-                match! ret (firstIdentifier, currentToken) with
-                // all cases we have to cover:
-                // module:member[<...>](...)
-                // id<...>(...)
-                // id(...)
-                // id: ty
-                // id :ty
-                // id : ty
-                // _
-                // id
-                | ({ trailingTrivia = []}, { tokenKind = ColonToken; trailingTrivia = [] }) ->
-                    // moduleName:
-                    //           ^ 
-                    let! colon = nextToken
-                    let! moduleMember = matchToken IdentifierToken
-                    let! restOfValCon = parseValConRest
-                    return
-                        ModuleQualifierDeclarationReference {
-                            moduleNameIdentifier = firstIdentifier
-                            colon = colon
-                            moduleDeclarationNameIdentifier = moduleMember
-                        }
-                        |> restOfValCon
-                | (_, { tokenKind = LessThanToken })
-                | (_, { tokenKind = OpenParenthesisToken }) ->
-                    // id<
-                    //   ^
-                    // -or-
-                    // id(
-                    //   ^
-                    let! restOfValcon = parseValConRest
-                    return
-                        IdentifierDeclarationReference {
-                            declarationNameIdentifier = firstIdentifier
-                        }
-                        |> restOfValcon
-                | (_, { tokenKind = ColonToken }) ->
-                    // id: ty
-                    //   ^
-                    // -or-
-                    // id : ty
-                    //    ^
-                    // -or-
-                    // id :ty
-                    //    ^
-                    let! optionalType = parseOptionalType
-                    return VariablePattern {
-                        mutableKeyword = None
-                        variablePatternIdentifier = firstIdentifier
-                        optionalType = optionalType
-                    }
-                | ({ text = Some "_"}, _) ->
-                    // _
-                    //  ^
-                    return UnderscorePattern firstIdentifier
+    let private parseTemplateDec : Parser<TemplateDeclarationSyntax> =
+        let parseTypeVariableIdentifier =
+            par {
+                match! currentKind with
+                | IdentifierToken ->
+                    let! typeVariableIdentifier = matchToken TypeVariableIdentifierToken
+                    let! () = skipSilent
+                    return typeVariableIdentifier
                 | _ ->
-                    return VariablePattern {
-                        mutableKeyword = None
-                        variablePatternIdentifier = firstIdentifier
-                        optionalType = None
-                    }
-            | OpenParenthesisToken ->
-                let! openParenthesis = nextToken
-                let! closeParenthesis = matchToken CloseParenthesisToken
-                return UnitPattern (openParenthesis, closeParenthesis)
-                // TODO tuple
-                // TODO parenthesized pattern
-
-            | _ ->
-                let! identifier = matchToken IdentifierToken
-                return VariablePattern {
-                    mutableKeyword = None
-                    variablePatternIdentifier = identifier
-                    optionalType = None
-                }
-        }
-
-    let parseValConRest : Parser<DeclarationReferenceSyntax -> PatternSyntax> =
-        par {
-            let! optionalTemplateApplication =
-                parseTemplateApplication
-                |> ifCurrentKind LessThanToken
-            let! openParenthesis = matchToken OpenParenthesisToken
-            let! valConArguments =
-                manySep parsePattern CommaToken CloseParenthesisToken
-            let! closeParenthesis = matchToken CloseParenthesisToken
-            return fun declarationReference ->
-                ValConPattern {
-                    valConDeclarationReference = declarationReference
-                    optionalTemplateApplication = optionalTemplateApplication
-                    openParenthesis = openParenthesis
-                    valConArguments = valConArguments
-                    closeParenthesis = closeParenthesis
-                }
-        }
-
-let rec parseIdentifierWithType : Parser<IdentifierWithType> =
-    pipe3
-        (matchToken IdentifierToken)
-        (matchToken ColonToken)
-        (Types.parseTypeExpression)
-        (fun identifier colon typeExpression ->
-            {
-                identifier = identifier
-                colon = colon
-                requiredType = typeExpression
+                    return! matchToken TypeVariableIdentifierToken
             }
+        lexerMode TypeMode (
+            pipe3
+                (matchToken (LessThanToken))
+                (many1Sep parseTypeVariableIdentifier CommaToken)
+                (matchToken (GreaterThanToken))
+                (fun lt typeVariables gt -> {
+                    lessThanSign = lt
+                    typeVariables = typeVariables
+                    greaterThanSign = gt
+                })
         )
 
-and parseOptionalType : Parser<(Token * TypeExpressionSyntax) option> =
-    lexerMode TypeMode (
-        pipe2
-            (matchToken ColonToken)
-            Types.parseTypeExpression
-            (fun colon typeExpression -> colon, typeExpression)
-        |> ifCurrentKind ColonToken
-    )
+    let private parseValueConstructor : Parser<ValueConstructorSyntax> =
+        par {
+            let! valueConstructorIdentifier = matchToken IdentifierToken
+            let! openParenthesis = matchToken OpenParenthesisToken
+            let! valueConstructorParameterTypes =
+                manySep Types.parseTypeExpression CommaToken CloseParenthesisToken
+            let! closeParenthesis = matchToken CloseParenthesisToken
+            return {
+                valueConstructorIdentifier = valueConstructorIdentifier
+                openParenthesis = openParenthesis
+                valueConstructorParameterTypes = valueConstructorParameterTypes
+                closeParenthesis = closeParenthesis
+            }
+        }
 
-and syntaxTree : Parser<SyntaxTree> =
+    let private parseAlgebraicType : Parser<AlgebraicTypeSyntax> =
+        par {
+            let! typeKeyword = matchToken (KeywordToken TypeKeyword)
+            let! typeIdentifier = matchToken (IdentifierToken)
+            let! optionalTemplateDeclaration =
+                parseTemplateDec
+                |> ifCurrentKind LessThanToken
+            let! equals = matchToken EqualsToken
+            let skipUnnecessaryFirstPipe =
+                par {
+                    match! currentKind with
+                    | PipeToken ->
+                        // if there's an unnecessary pipe token before the first value constructor, skip it
+                        let! _error = matchToken IdentifierToken
+                        do! skipSilent
+                    | _ ->
+                        return ()
+                }
+            do! skipUnnecessaryFirstPipe
+            let! valueConstructors =
+                many1Sep parseValueConstructor PipeToken
+            return {
+                typeKeyword = typeKeyword
+                algebraicTypeIdentifier = typeIdentifier
+                optionalTemplateDeclaration = optionalTemplateDeclaration
+                equals = equals
+                valueConstructors = valueConstructors
+            }
+        }
+
+    let private parseAlias : Parser<AliasSyntax> =
+        par {
+            let! aliasKeyword = matchToken (KeywordToken AliasKeyword)
+            let! aliasIdentifier = matchToken (IdentifierToken)
+            let! optionalTemplateDeclaration =
+                parseTemplateDec
+                |> ifCurrentKind LessThanToken
+            let! equals = matchToken EqualsToken
+            let! aliasOfType = Types.parseTypeExpression
+            return {
+                aliasKeyword = aliasKeyword
+                aliasIdentifier = aliasIdentifier
+                optionalTemplateDeclaration = optionalTemplateDeclaration
+                equals = equals
+                aliasOfType = aliasOfType
+            }
+        }
+
+    let private parseLetDeclaration : Parser<LetDeclarationSyntax> =
+        par {
+            let! letKeyword = matchToken (KeywordToken LetKeyword)
+            let! identifier = matchToken IdentifierToken
+            let! optionalType = Types.parseOptionalType
+            let! equals = matchToken EqualsToken
+            let! body = Expressions.parseExpression
+            return {
+                letKeyword = letKeyword
+                identifier = identifier
+                optionalType = optionalType
+                equals = equals
+                body = body
+            }
+        }
+
+    let private parseFunctionDeclaration : Parser<FunctionDeclarationSyntax> =
+        par {
+            let! funKeyword = matchToken (KeywordToken FunKeyword)
+            let! identifier = matchToken IdentifierToken
+            let! optionalTemplateDeclaration =
+                parseTemplateDec
+                |> ifCurrentKind LessThanToken
+            let! openParenthesis = matchToken OpenParenthesisToken
+            let! functionArguments =
+                manySep Types.parseIdentifierWithOptionalType CommaToken CloseParenthesisToken
+            let! closeParenthesis = matchToken CloseParenthesisToken
+            // TODO constraints
+            let! optionalType = Types.parseOptionalType
+            let! equal = matchToken EqualsToken
+            let! functionBody = Expressions.parseExpression
+            return {
+                funKeyword = funKeyword
+                identifier = identifier
+                optionalTemplateDeclaration = optionalTemplateDeclaration
+                openParenthesis = openParenthesis
+                functionArguments = functionArguments
+                closeParenthesis = closeParenthesis
+                optionalType = optionalType
+                equals = equal
+                functionBody = functionBody
+            }
+        }
+
+    let rec parseDeclaration : Parser<DeclarationSyntax> =
+        let isDeclarationStart tokenKind =
+            match tokenKind with
+            | KeywordToken OpenKeyword
+            | KeywordToken LetKeyword
+            | KeywordToken TypeKeyword
+            | KeywordToken AliasKeyword
+            | KeywordToken FunKeyword
+            | InlineCppToken -> true
+            | _ -> false
+
+        par {
+            match! currentKind with
+            | KeywordToken OpenKeyword ->
+                let! openModules = parseOpenModules
+                return OpenModulesDeclarationSyntax openModules
+            | KeywordToken LetKeyword ->
+                let! letDeclaration = parseLetDeclaration
+                return LetDeclarationSyntax letDeclaration
+            | KeywordToken TypeKeyword ->
+                let! algebraicType = lexerMode TypeMode parseAlgebraicType
+                return AlgebraicTypeSyntax algebraicType
+            | KeywordToken AliasKeyword ->
+                let! alias = lexerMode TypeMode parseAlias
+                return AliasSyntax alias
+            | KeywordToken FunKeyword ->
+                let! func = parseFunctionDeclaration
+                return FunctionDeclarationSyntax func
+            | InlineCppToken ->
+                let! inlineCpp = nextToken
+                return InlineCppDeclarationSyntax inlineCpp
+            | _ ->
+                // token is not recognized as top level declaration: skip to the next possible declaration
+                // give a syntax error
+                let! _ = matchToken (KeywordToken LetKeyword)
+                // and skip all tokens until we find a token that can start a declaration, or reach the end of the token
+                let tokenKindShouldBeSkipped tokenKind =
+                    tokenKind <> EndOfFileToken && not (tokenKind |> isDeclarationStart)
+
+                let! _ = manyWhile (currentKind |> map tokenKindShouldBeSkipped) skipSilent
+
+                // TODO another recovery tactic: if we find a = we can try to parse an expression or a type, though which one I don't know
+
+                // and try again if it's not the end of the file
+                match! currentKind with
+                | EndOfFileToken ->
+                    // if it's EOF, let's report that we're wanting a let declaration so that we can return something
+                    let! letDeclaration = parseLetDeclaration
+                    return LetDeclarationSyntax letDeclaration
+                | _ ->
+                    //otherwise just try again
+                    return! parseDeclaration
+        }
+
+module Modules =
+    let private parseModuleName : Parser<ModuleNameSyntax> =
+        par {
+            let! moduleKeyword = matchToken (KeywordToken ModuleKeyword)
+            let! moduleName = matchToken (IdentifierToken)
+            return {
+                moduleKeyword = moduleKeyword
+                moduleNameIdentifier = moduleName
+            }
+        }
+
+    let parseModuleDefinition =
+        lexerMode ExpressionMode (par {
+            let! moduleName = parseModuleName
+            let! declarations =
+                manyWhile
+                    (currentKind |> map ((<>) EndOfFileToken))
+                    Declarations.parseDeclaration
+            return {
+                moduleName = moduleName
+                declarations = declarations
+            }
+        })
+
+let syntaxTree : Parser<SyntaxTree> =
     par {
-        let! module_ = parseModuleDefinition
+        let! module_ = Modules.parseModuleDefinition
         let! eofToken = matchToken TokenKind.EndOfFileToken
         let! (parseErrors, lexErrors) = errors
         return { lexErrors = lexErrors; parseErrors = parseErrors; expression = module_; eofToken = eofToken }
