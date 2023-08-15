@@ -399,6 +399,14 @@ module rec Expressions =
                             |> SeparatedNonEmptySyntaxList.prepend (innerExpression, firstSemicolon)
                         let! closeParenthesis = matchToken CloseParenthesisToken
                         return SequenceExpression(openParenthesis, sequence, closeParenthesis)
+                    | CommaToken ->
+                        let! firstComma = nextToken
+                        let! rest = many1Sep parseExpression CommaToken
+                        let tuple =
+                            rest
+                            |> SeparatedNonEmptySyntaxList.prepend (innerExpression, firstComma)
+                        let! closeParenthesis = matchToken CloseParenthesisToken
+                        return TupleExpression(openParenthesis, tuple, closeParenthesis)
                     | CloseParenthesisToken
                     | _ ->
                         let! closeParenthesis = matchToken CloseParenthesisToken

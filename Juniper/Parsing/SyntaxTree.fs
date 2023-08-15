@@ -271,6 +271,7 @@ module Expressions =
         | NumberExpressionSyntax of Token
         | ParenthesizedExpressionSyntax of Token * ExpressionSyntax * Token
         | SequenceExpression of Token * SeparatedNonEmptySyntaxList<ExpressionSyntax> * Token
+        | TupleExpression of Token * SeparatedNonEmptySyntaxList<ExpressionSyntax> * Token
         | StringLiteralExpressionSyntax of Token
         | CharacterArrayLiteralExpressionSyntax of Token
         | DeclarationReferenceExpressionSyntax of DeclarationReferenceSyntax * (TemplateApplicationSyntax option)
