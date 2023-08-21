@@ -279,11 +279,41 @@ module Patterns =
                     }
             | OpenParenthesisToken ->
                 let! openParenthesis = nextToken
-                let! closeParenthesis = matchToken CloseParenthesisToken
-                return UnitPattern (openParenthesis, closeParenthesis)
-                // TODO tuple
-                // TODO parenthesized pattern
-
+                match! currentKind with
+                | CloseParenthesisToken ->
+                    let! closeParenthesis = matchToken CloseParenthesisToken
+                    return UnitPattern (openParenthesis, closeParenthesis)
+                | _ ->
+                    let! firstPattern = parsePattern
+                    match! currentKind with
+                    | CloseParenthesisToken ->
+                        let! closeParenthesis = nextToken
+                        return ParenthesizedPattern {
+                            openParenthesis = openParenthesis
+                            pattern = firstPattern
+                            closeParenthesis = closeParenthesis
+                        }
+                    | _ ->
+                        let! firstComma = matchToken CommaToken
+                        let! followingPatterns = many1Sep parsePattern CommaToken
+                        let allPatterns =
+                            followingPatterns
+                            |> SeparatedNonEmptySyntaxList.prepend (firstPattern, firstComma)
+                        let! closeParenthesis = matchToken CloseParenthesisToken
+                        return TuplePattern {
+                            openParenthesis = openParenthesis
+                            patterns = allPatterns
+                            closeParenthesis = closeParenthesis
+                        }
+            | OpenBraceToken ->
+                let! openBrace = matchToken OpenBraceToken
+                let! fieldPatterns = manySep parseFieldPattern SemicolonToken CloseBraceToken
+                let! closeBrace = matchToken CloseBraceToken
+                return RecordPattern {
+                    openBrace = openBrace
+                    fieldPatterns = fieldPatterns
+                    closeBrace = closeBrace
+                }
             | _ ->
                 let! identifier = matchToken IdentifierToken
                 return VariablePattern {
@@ -310,6 +340,19 @@ module Patterns =
                     valConArguments = valConArguments
                     closeParenthesis = closeParenthesis
                 }
+        }
+    
+    
+    and parseFieldPattern: Parser<FieldPatternSyntax> =
+        par {
+            let! fieldIdentifier = matchToken IdentifierToken
+            let! equal = matchToken EqualsToken
+            let! fieldPattern = parsePattern
+            return {
+                fieldIdentifier = fieldIdentifier
+                equal = equal
+                fieldPattern = fieldPattern
+            }
         }
     
 module rec Expressions =

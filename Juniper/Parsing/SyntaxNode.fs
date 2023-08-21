@@ -53,6 +53,8 @@ type NodeKind =
     | CharacterArrayLiteralExpressionKind
     | DeclarationReferenceExpressionKind
     | InlineCppExpressionKind
+    | SmartPointerExpressionKind
+    | TupleExpressionKind
     | ArrayAccessLeftAssignKind
     | RecordMemberLeftAssignKind
     | DeclarationReferenceLeftAssignKind
@@ -61,6 +63,10 @@ type NodeKind =
     | FalsePatternKind
     | UnderscorePatternKind
     | UnitPatternKind
+    | FieldPatternKind
+    | RecordPatternKind
+    | TuplePatternKind
+    | ParenthesizedPatternKind
     | SyntaxTreeKind
 
 type ISyntaxNode =
@@ -606,6 +612,21 @@ type SyntaxNode =
                   SyntaxNode.From whileDoExpression.bodyExpression
                   SyntaxNode.From whileDoExpression.endKeyword
                 ]
+        | SmartPointerExpression smartPointerExpression ->
+            SyntaxNode.fromChildren
+                SmartPointerExpressionKind
+                [ SyntaxNode.From smartPointerExpression.smartPointerKeyword
+                  SyntaxNode.From smartPointerExpression.openParenthesis
+                  SyntaxNode.From smartPointerExpression.valueExpression
+                  SyntaxNode.From smartPointerExpression.comma
+                  SyntaxNode.From smartPointerExpression.destructorExpression
+                  SyntaxNode.From smartPointerExpression.closeParenthesis]
+        | TupleExpression (openParenthesis, elements, closeParenthesis) ->
+            SyntaxNode.fromChildren
+                TupleExpressionKind
+                [ SyntaxNode.From openParenthesis
+                  yield! elements |> SyntaxNode.FromNonEmptyList SyntaxNode.From
+                  SyntaxNode.From closeParenthesis]
     static member From(this: ArrayAccessLeftAssignSyntax) =
         SyntaxNode.fromChildren
             ArrayAccessLeftAssignKind
@@ -652,6 +673,33 @@ type SyntaxNode =
               yield! this.valConArguments |> SyntaxNode.FromList SyntaxNode.From
               SyntaxNode.From this.closeParenthesis
             ]
+    static member From(this: FieldPatternSyntax) = 
+        SyntaxNode.fromChildren
+            FieldPatternKind
+            [ SyntaxNode.From this.fieldIdentifier
+              SyntaxNode.From this.equal
+              SyntaxNode.From this.fieldPattern]
+    static member From(this: RecordPatternSyntax) =
+        SyntaxNode.fromChildren
+            RecordPatternKind
+            [ SyntaxNode.From this.openBrace
+              yield! this.fieldPatterns |> SyntaxNode.FromList SyntaxNode.From
+              SyntaxNode.From this.closeBrace
+            ]
+    static member From(this: TuplePatternSyntax) =
+        SyntaxNode.fromChildren
+            TuplePatternKind
+            [ SyntaxNode.From this.openParenthesis
+              yield! this.patterns |> SyntaxNode.FromNonEmptyList SyntaxNode.From
+              SyntaxNode.From this.closeParenthesis
+            ]
+    static member From(this: ParenthesizedPatternSyntax) =
+        SyntaxNode.fromChildren
+            ParenthesizedPatternKind
+            [ SyntaxNode.From this.openParenthesis
+              SyntaxNode.From this.pattern
+              SyntaxNode.From this.closeParenthesis
+            ]
     static member From(this: PatternSyntax) =
         match this with
         | VariablePattern variablePatternSyntax ->
@@ -668,6 +716,12 @@ type SyntaxNode =
             SyntaxNode.fromChildren UnitPatternKind [SyntaxNode.From openParenthesis; SyntaxNode.From closeParenthesis]
         | ValConPattern valConPatternSyntax ->
             SyntaxNode.From valConPatternSyntax
+        | ParenthesizedPattern parenthesizedPattern ->
+            SyntaxNode.From parenthesizedPattern
+        | RecordPattern recordPattern ->
+            SyntaxNode.From recordPattern
+        | TuplePattern tuplePattern ->
+            SyntaxNode.From tuplePattern
     static member From(this: SyntaxTree) =
         SyntaxNode.fromChildren
             SyntaxTreeKind

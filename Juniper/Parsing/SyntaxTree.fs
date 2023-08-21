@@ -125,8 +125,37 @@ module Patterns =
             valConArguments: SeparatedSyntaxList<PatternSyntax>
             closeParenthesis: Token
         }
+
+    and FieldPatternSyntax =
+        {
+            fieldIdentifier: Token
+            equal: Token
+            fieldPattern: PatternSyntax
+        }
+        
+    and RecordPatternSyntax =
+        {
+            openBrace: Token
+            fieldPatterns: SeparatedSyntaxList<FieldPatternSyntax>
+            closeBrace: Token
+        }
+        
+    and TuplePatternSyntax =
+        {
+            openParenthesis: Token
+            patterns: SeparatedNonEmptySyntaxList<PatternSyntax>
+            closeParenthesis: Token
+        }
+
+    and ParenthesizedPatternSyntax = 
+        {
+            openParenthesis: Token
+            pattern: PatternSyntax
+            closeParenthesis: Token
+        }
     
     and PatternSyntax =
+        | ParenthesizedPattern of ParenthesizedPatternSyntax
         | VariablePattern of VariablePatternSyntax
         | IntegerPattern of Token
         | TruePattern of Token
@@ -134,6 +163,8 @@ module Patterns =
         | UnderscorePattern of Token
         | UnitPattern of Token * Token
         | ValConPattern of ValConPatternSyntax
+        | RecordPattern of RecordPatternSyntax
+        | TuplePattern of TuplePatternSyntax
         
 
 module Expressions =
