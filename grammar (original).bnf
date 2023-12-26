@@ -1,0 +1,93 @@
+<module>            ::= "module" <id> [<declaration> {"," <declaration>}];
+<declaration>       ::= <open>
+                     |  <algebraic-type>
+                     |  <function>
+                     |  <let>
+                     |  <alias>
+                     |  "#" <inline-cpp> "#";
+<open>              ::= "open" "(" [<id> {"," <id>}] ")";
+<template-dec>      ::= "<" ["'" <id> {"," "'" <id>}] [";" <id> {"," <id>}] ">";
+<template-apply>    ::= <ty-expr> {"," <ty-expr>} [";" <capacity-expr> {"," <capacity-expr>}];
+<algebraic-type>    ::= "type" <id> [<template-dec>] "=" <value-constructor> {"|" <value-constructor>};
+<alias>             ::= "alias" <id> [<template-dec>] "=" <ty-expr>;
+<value-constructor> ::= <id> "(" [<ty-expr> {"," <ty-expr>}] ")";
+<let>               ::= "let" <id> [":" <ty-expr>] "=" <expr>;
+<function>          ::= "fun" <id> [<template-dec>] "(" [<id> [":" <ty-expr>] {"," <id> [":" <ty-expr>]}] ")" [":" <ty-expr>] ["where" <ty-expr> ":" <constraint> {"," <ty-expr> ":" <constraint>}] "=" <expr>;
+<constraint>        ::= "num"
+                     |  "int"
+                     |  "real"
+                     |  "packed"
+                     |  "{" [<id> ":" <ty-expr> {";" <id> ":" <ty-expr>}] "}"
+<declaration-ref>   ::= <id> | <module-qualifier>;
+<ty-expr>           ::= <declaration-ref> ["<" <template-apply> ">"]
+                     |  "(" <ty-expr> ")" "(" [<ty-expr> {"," <ty-expr>}] ")" "->" <ty-expr>
+                     |  <ty-expr> "[" <capacity-expr> "]"
+                     |  <ty-expr> "ref"
+                     |  <ty-expr> "*" <ty-expr> [{"*" <ty-expr>}];
+                     |  "(" <ty-expr> ")"
+                     |  "|" [<id> ":" <ty-expr> {";" <id> ":" <ty-expr>}] "|"
+                     |  ["packed"] "{" [<id> ":" <ty-expr> {";" <id> ":" <ty-expr>}] "}"
+                     |  "uint8" | "uint16" | "uint32" | "uint64" | "int8" | "int16"
+                     |  "int32" | "int64" | "bool" | "unit" | "float" | "double"
+                     |  "pointer" | "string" | "rawpointer";
+<capacity-expr>     ::= <capacity-expr> <capacity-op> <capacity-expr>
+                     |  <id>
+                     |  <natural-number>;
+<capacity-op>       ::= "+" | "-" | "*" | "/";
+<module-qualifier>  ::= <id> ":" <id>;
+<expr-list>         ::= <expr> {"," <expr>};
+<field-assign-list> ::= <id> "=" <expr> {";" <id> "=" <expr>};
+<expr>              ::= "()" | "true" | "false" | "null" | <integer> | <float>"f" | <double>
+                     | <integer>"i8" | <unsigned-integer>"u8" | <integer>"i16"
+                     | <unsigned-integer>"u16" | <integer>"i32" | <unsigned-integer>"u32"
+                     | <integer>"i64" | <unsigned-integer>"u64"
+                     |  "(" <expr> {";" <expr>} ")"
+                     |  "(" <expr> "," <expr> [{"," <expr>}] ")"
+                     |  <expr> "(" [<expr-list>] ")"
+                     |  <declaration-ref> "<" <template-apply> ">"
+                     |  <expr> "[" <expr> "]"
+                     |  <expr> <binary-op> <expr>
+                     |  "if" <expr> "then" <expr> [{"elif" <expr> "then" <expr>}] "else" <expr> "end"
+                     |  "let" <pattern> "=" <expr>
+                     |  "var" <id> ":" <ty-expr>
+                     |  "set" <left-assign> "=" <expr>
+                     |  "set" "ref" <left-assign> "=" <expr>
+                     |  "for" <id> [":" <ty-expr>] "in" <expr> "to" <expr> "do" <expr> "end"
+                     |  "for" <id> [":" <ty-expr>] "in" <expr> "downto" <expr> "do" <expr> "end"
+                     |  "do" <expr> "while" <expr> "end"
+                     |  "while" <expr> "do" <expr> "end"
+                     |  <module-qualifier>
+                     |  <id>
+                     |  "not" <expr>
+                     |  "~~~" <expr>
+                     |  <expr> "." <id>
+                     |  "fn" "(" [<id> [":" <ty-expr>] {"," <id> [":" <ty-expr>]}] ")" [":" <ty-expr>] "->" <expr> "end"
+                     |  "case" <expr> "of" "|" <case-clause> {"|" <case-clause>} "end"
+                     |  ["packed"] "{" [<field-assign-list>] "}"
+                     |  "[" <expr-list> "]"
+                     |  "ref" <expr>
+                     |  "!" <expr>
+                     |  "array" <ty-expr> "of" <expr> "end"
+                     |  "array" <ty-expr> "end"
+                     |  "#" <inline-cpp> "#";
+                     |  <expr> ":" <ty-expr>
+                     |  "'" <extended-ascii-string> "'"
+                     |  "\"" <extended-ascii-string> "\""
+                     |  "smartpointer(" <expr> "," <expr> ")"
+<binary-op>         ::= "+" | "-" | "*" | "/" | "mod" | "and" | "or" | "&&&"
+                     |  "|||" | ">=" | "<=" | ">" | "<" | "==" | "!=" | "<<<"
+                     |  ">>>" | "|>";
+<left-assign>       ::= <id>
+                     |  <module-qualifier>
+                     |  <left-assign> "[" <expr> "]"
+                     |  <left-assign> "." <id>;
+<case-clause>       ::= <pattern> "=>" <expr>;
+<pattern>           ::= ["mutable"] <id> [":" <ty-expr>]
+                     |  <integer>
+                     |  <float>
+                     |  "true"
+                     |  "false"
+                     |  "_"
+                     |  <declaration-ref> ["<" <ty-expr> {"," <ty-expr>} ">"] "(" <pattern> ")"
+                     |  "{" [<id> "=" <pattern> {";" <id> "=" <pattern>}] "}"
+                     |  "(" <pattern> "," <pattern> {"," <pattern>} ")";

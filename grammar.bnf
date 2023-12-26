@@ -1,93 +1,126 @@
-<module>            ::= "module" <id> [<declaration> {, <declaration>}];
-<declaration>       ::= <open>
-                     |  <algebraic-type>
-                     |  <function>
-                     |  <let>
-                     |  <alias>
-                     |  "#" <inline-cpp> "#";
-<open>              ::= "open" "(" [<id> {"," <id>}] ")";
-<template-dec>      ::= "<" ["'" <id> {"," "'" <id>}] [";" <id> {"," <id>}] ">";
-<template-apply>    ::= <ty-expr> {"," <ty-expr>} [";" <capacity-expr> {"," <capacity-expr>}];
-<algebraic-type>    ::= "type" <id> [<template-dec>] "=" <value-constructor> {"|" <value-constructor>};
-<alias>             ::= "alias" <id> [<template-dec>] "=" <ty-expr>;
-<value-constructor> ::= <id> "(" [<ty-expr> {"," <ty-expr>}] ")";
-<let>               ::= "let" <id> [":" <ty-expr>] "=" <expr>;
-<function>          ::= "fun" <id> [<template-dec>] "(" [<id> [":" <ty-expr>] {"," <id> [":" <ty-expr>]}] ")" [":" <ty-expr>] ["where" <ty-expr> ":" <constraint> {"," <ty-expr> ":" <constraint>}] "=" <expr>;
-<constraint>        ::= "num"
-                     |  "int"
-                     |  "real"
-                     |  "packed"
-                     |  "{" [<id> ":" <ty-expr> {";" <id> ":" <ty-expr>}] "}"
-<declaration-ref>   ::= <id> | <module-qualifier>;
-<ty-expr>           ::= <declaration-ref> ["<" <template-apply> ">"]
-                     |  "(" <ty-expr> ")" "(" [<ty-expr> {"," <ty-expr>}] ")" "->" <ty-expr>
-                     |  <ty-expr> "[" <capacity-expr> "]"
-                     |  <ty-expr> "ref"
-                     |  <ty-expr> "*" <ty-expr> [{"*" <ty-expr>}];
-                     |  "(" <ty-expr> ")"
-                     |  "|" [<id> ":" <ty-expr> {";" <id> ":" <ty-expr>}] "|"
-                     |  ["packed"] "{" [<id> ":" <ty-expr> {";" <id> ":" <ty-expr>}] "}"
-                     |  "uint8" | "uint16" | "uint32" | "uint64" | "int8" | "int16"
-                     |  "int32" | "int64" | "bool" | "unit" | "float" | "double"
-                     |  "pointer" | "string" | "rawpointer";
-<capacity-expr>     ::= <capacity-expr> <capacity-op> <capacity-expr>
-                     |  <id>
-                     |  <natural-number>;
-<capacity-op>       ::= "+" | "-" | "*" | "/";
-<module-qualifier>  ::= <id> ":" <id>;
-<expr-list>         ::= <expr> {"," <expr>};
-<field-assign-list> ::= <id> "=" <expr> {";" <id> "=" <expr>};
-<expr>              ::= "()" | "true" | "false" | "null" | <integer> | <float>"f" | <double>
-                     | <integer>"i8" | <unsigned-integer>"u8" | <integer>"i16"
-                     | <unsigned-integer>"u16" | <integer>"i32" | <unsigned-integer>"u32"
-                     | <integer>"i64" | <unsigned-integer>"u64"
-                     |  "(" <expr> {";" <expr>} ")"
-                     |  "(" <expr> "," <expr> [{"," <expr>}] ")"
-                     |  <expr> "(" [<expr-list>] ")"
-                     |  <declaration-ref> "<" <template-apply> ">"
-                     |  <expr> "[" <expr> "]"
-                     |  <expr> <binary-op> <expr>
-                     |  "if" <expr> "then" <expr> [{"elif" <expr> "then" <expr>}] "else" <expr> "end"
-                     |  "let" <pattern> "=" <expr>
-                     |  "var" <id> ":" <ty-expr>
-                     |  "set" <left-assign> "=" <expr>
-                     |  "set" "ref" <left-assign> "=" <expr>
-                     |  "for" <id> [":" <ty-expr>] "in" <expr> "to" <expr> "do" <expr> "end"
-                     |  "for" <id> [":" <ty-expr>] "in" <expr> "downto" <expr> "do" <expr> "end"
-                     |  "do" <expr> "while" <expr> "end"
-                     |  "while" <expr> "do" <expr> "end"
-                     |  <module-qualifier>
-                     |  <id>
-                     |  "not" <expr>
-                     |  "~~~" <expr>
-                     |  <expr> "." <id>
-                     |  "fn" "(" [<id> [":" <ty-expr>] {"," <id> [":" <ty-expr>]}] ")" [":" <ty-expr>] "->" <expr> "end"
-                     |  "case" <expr> "of" "|" <case-clause> {"|" <case-clause>} "end"
-                     |  ["packed"] "{" [<field-assign-list>] "}"
-                     |  "[" <expr-list> "]"
-                     |  "ref" <expr>
-                     |  "!" <expr>
-                     |  "array" <ty-expr> "of" <expr> "end"
-                     |  "array" <ty-expr> "end"
-                     |  "#" <inline-cpp> "#";
-                     |  <expr> ":" <ty-expr>
-                     |  "'" <extended-ascii-string> "'"
-                     |  "\"" <extended-ascii-string> "\""
-                     |  "smartpointer(" <expr> "," <expr> ")"
-<binary-op>         ::= "+" | "-" | "*" | "/" | "mod" | "and" | "or" | "&&&"
-                     |  "|||" | ">=" | "<=" | ">" | "<" | "==" | "!=" | "<<<"
-                     |  ">>>" | "|>";
-<left-assign>       ::= <id>
-                     |  <module-qualifier>
-                     |  <left-assign> "[" <expr> "]"
-                     |  <left-assign> "." <id>;
-<case-clause>       ::= <pattern> "=>" <expr>;
-<pattern>           ::= ["mutable"] <id> [":" <ty-expr>]
-                     |  <integer>
-                     |  <float>
-                     |  "true"
-                     |  "false"
-                     |  "_"
-                     |  <declaration-ref> ["<" <ty-expr> {"," <ty-expr>} ">"] "(" <pattern> ")"
-                     |  "{" [<id> "=" <pattern> {";" <id> "=" <pattern>}] "}"
-                     |  "(" <pattern> "," <pattern> {"," <pattern>} ")";
+token "*" Asterisk;
+token ";" Semicolon;
+token "," Comma;
+token "(" OpenParenthesis;
+token ")" CloseParenthesis;
+token ":" Colon;
+token "{" OpenBrace;
+token "}" CloseBrace;
+token "[" OpenBracket;
+token "]" CloseBracket;
+token ">" GreaterThan;
+token ">=" GreaterThanEquals;
+token "<" LessThan;
+token "<=" LessThanEquals;
+token "->" Arrow;
+token "=>" DoubleArrow;
+token "/" Slash;
+token "+" Plus;
+token "-" Minus;
+token "~~~" BinaryNot;
+token "^^^" BinaryXor;
+token "&&&" BinaryAnd;
+token "|||" BinaryOr;
+token "." Dot;
+token "|" Pipe;
+token "|>" PipeOperator;
+token "=" Equals;
+token "==" EqualsEquals;
+token "!=" BangEqual;
+token "!" Bang;
+token ">>>" RightShift;
+token "<<<" LeftShift;
+token "#" HashToken;
+token "'" SingleQuote;
+token "\" DoubleQuote;
+token "_" Underscore;
+
+<module>            ::= Module "module" <moduleName: id> [<declaration> {"," <declaration>}];
+<declaration>       ::= Open <open>
+                     |  AlgegraicType <algebraic-type>
+                     |  Function <function>
+                     |  Let <let>
+                     |  Alias <alias>
+                     |  InlineCpp "#" <inline-cpp> "#";
+<open>              ::= OpenModules "open" "(" [<id> {"," <id>}] ")";
+<template-declaration>      ::= TemplateDeclaration "<" ["'" <id> {"," "'" <id>}] [";" <id> {"," <id>}] ">";
+<template-application>    ::= TemplateApply <type-expression> {"," <type-expression>} [";" <capacity-expression> {"," <capacity-expression>}];
+<algebraic-type>    ::= AlgebraicTypeDeclaration "type" <id> [<template-declaration>] "=" <value-constructor> {"|" <value-constructor>};
+<alias>             ::= AliasDeclaration "alias" <id> [<template-declaration>] "=" <type-expression>;
+<value-constructor> ::= ValueConstructor <id> "(" [<type-expression> {"," <type-expression>}] ")";
+<let>               ::= LetDeclaration "let" <id> [":" <type-expression>] "=" <expression>;
+<function>          ::= FunctionDeclaration "fun" <id> [<template-declaration>] "(" [<id> [":" <type-expression>] {"," <id> [":" <type-expression>]}] ")" [":" <type-expression>] ["where" <type-expression> ":" <constraint> {"," <type-expression> ":" <constraint>}] "=" <expression>;
+<constraint>        ::= Num "num"
+                     |  Int "int"
+                     |  Real "real"
+                     |  Packed "packed"
+                     |  Member "{" [<IdentifierWithType> {";" <IdentifierWithType>}] "}";
+<declaration-reference>   ::= Identifier <id> | ModuleQualifier <module-qualifier>;
+<IdentifierWithType>::= IdentifierWithType <identifier: id> ":" <requiredType: ty-expr>;
+<identifier-with-optional-type>::= IdentifierWithOptionalType <identifier: id> [":" <type: ty-expr>];
+<type-expression>   ::= DeclarationRef <declaration-reference> ["<" <template-application> ">"]
+                     |  Function "(" <type-expression> ")" "(" [<type-expression> {"," <type-expression>}] ")" "->" <type-expression>
+                     |  Capacity <elementType: type-expression> "[" <capacity: capacity-expression> "]"
+                     |  Ref <type-expression> "ref"
+                     |  Tuple <type-expression> "*" <type-expression> [{"*" <type-expression>}]
+                     |  Parenthesized "(" <type-expression> ")"
+                     |  Closure "|" [<id> ":" <type-expression> {";" <id> ":" <type-expression>}] "|"
+                     |  Record ["packed"] "{" [<id> ":" <type-expression> {";" <id> ":" <type-expression>}] "}"
+                     |  UInt8 "uint8" | UInt16 "uint16" | UInt32 "uint32" | UInt64 "uint64" | Int8 "int8" | Int16 "int16"
+                     |  Int32 "int32" | Int64 "int64" | Bool "bool" | Unit "unit" | Float "float" | Double "double"
+                     |  Pointer "pointer" | String "string" | Rawpointer "rawpointer"
+					 ;
+<capacity-expression>::= Binary <capacity-expression> <capacity-op> <capacity-expression>
+                     |  Identifier <id>
+                     |  NaturalNumber <natural-number>;
+<capacity-op>       ::= Plus "+" | Minus "-" | Star "*" | Slash "/";
+<module-qualifier>  ::= ModuleQualifier <id> ":" <id>;
+<expr-list>         ::= ExpressionList <expression> {"," <expression>};
+<field-assign>      ::= FieldAssign <id> "=" <expression>;
+<field-assign-list> ::= FieldAssignList <field-assign> {";" <field-assign>};
+<expression>        ::= Unit "(" ")" | True "true" | False "false" | Null "null" | Integer <integer> | Float <float>"f" | Double <double>
+                     |  Sequence "(" <expression> {";" <expression>} ")"
+                     |  Tuple "(" <expression> "," <expression> [{"," <expression>}] ")"
+                     |  FunctionCall <functionExpression: expression> "(" [ <functionCallArgument: expression> {"," <expression>} ] ")"
+                     |  DeclarationRef <declaration-reference> "<" <template-application> ">"
+                     |  Indexer <expression> "[" <indexExpression: expression> "]"
+                     |  Binary <expression> <binary-op> <expression>
+                     |  If "if" <expression> "then" <expression> [{"elif" <expression> "then" <expression>}] "else" <expression> "end"
+                     |  Let "let" <pattern> "=" <expression>
+                     |  Var "var" <id> ":" <type-expression>
+                     |  Set "set" <left-assign> "=" <expression>
+                     |  SetRef "set" "ref" <left-assign> "=" <expression>
+                     |  ForTo "for" <id> [":" <type-expression>] "in" <expression> "to" <expression> "do" <expression> "end"
+                     |  ForDownto "for" <id> [":" <type-expression>] "in" <expression> "downto" <expression> "do" <expression> "end"
+                     |  Do "do" <expression> "while" <expression> "end"
+                     |  While "while" <expression> "do" <expression> "end"
+                     |  Not "not" <expression>
+                     |  BinaryNot "~~~" <expression>
+                     |  MemberAccess <expression> "." <id>
+                     |  Lambda "fn" "(" [<lambdaArgument: identifier-with-optional-type> {"," <identifier-with-optional-type>}] ")" [":" <type-expression>] "->" <expression> "end"
+                     |  CaseOf "case" <expression> "of" "|" <case-clause> {"|" <case-clause>} "end"
+                     |  Record ["packed"] "{" [<field-assign-list>] "}"
+                     |  List "[" <expr-list> "]"
+                     |  Ref "ref" <expression>
+                     |  Deref "!" <expression>
+                     |  ArrayOf "array" <type-expression> "of" <expression> "end"
+                     |  Array "array" <type-expression> "end"
+                     |  InlineCpp "#" <inline-cpp> "#"
+                     |  Type <expression> ":" <type-expression>
+                     |  CharArrayLiteral "'" <extended-ascii-string> "'"
+                     |  StringLiteral "\" <extended-ascii-string> "\"
+                     |  SmartPointer "smartpointer" "(" <expression> "," <expression> ")";
+<left-assign>       ::= DeclarationRef <declaration-reference>
+                     |  Array <left-assign> "[" <expression> "]"
+                     |  MemberAccess <left-assign> "." <id>;
+<case-clause>       ::= CaseClause <pattern> "=>" <expression>;
+<field-pattern>     ::= FieldPattern <fieldIdentifier: id> "=" <fieldPattern: pattern>;
+<pattern>           ::= Variable ["mutable"] <id> [":" <type-expression>]
+                     |  Integer <integer>
+                     |  Float <float>
+                     |  True "true"
+                     |  False "false"
+                     |  Wildcard "_"
+                     |  ValCon <declaration-reference> ["<" <type-expression> {"," <type-expression>} ">"] "(" <pattern> ")"
+                     |  Record "{" [<field-pattern> {";" <field-pattern>}] "}"
+                     |  Tuple "(" <firstPattern: pattern> "," <followingPattern: pattern> {"," <pattern>} ")";
