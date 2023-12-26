@@ -6,7 +6,7 @@ open Tokens
 let getUnaryOperatorPrecedence (tokenKind: TokenKind) =
     match tokenKind with
     | MinusToken
-    | KeywordToken RefKeyword
+    | KeywordToken NotKeyword
     | BitwiseNotToken
     | BangToken -> 12
     | _ -> 0
@@ -31,6 +31,19 @@ let getBinaryOperatorPrecedence (tokenKind: TokenKind) =
     | StarToken
     | SlashToken
     | KeywordToken ModKeyword -> 11
+    | _ -> 0
+
+let getUnaryCapacityOperatorPrecedence (tokenKind: TokenKind) =
+    match tokenKind with
+    // TODO: negate
+    | _ -> 0
+
+let getBinaryCapacityOperatorPrecedence (tokenKind: TokenKind) =
+    match tokenKind with
+    | PlusToken
+    | MinusToken -> 10
+    | StarToken
+    | SlashToken -> 11
     | _ -> 0
 
 let getKeyword (text: string) =
@@ -84,6 +97,10 @@ let getKeyword (text: string) =
     | "while" -> Some WhileKeyword
     | "array" -> Some ArrayKeyword
     | "smartpointer" -> Some SmartPointerKeyword
+    | "where" -> Some WhereKeyword
+    | "num" -> Some NumKeyword
+    | "int" -> Some IntKeyword
+    | "real" -> Some RealKeyword
     | _ -> None
 
 let keywordText (keyword: Keyword) =
@@ -137,6 +154,10 @@ let keywordText (keyword: Keyword) =
     | WhileKeyword -> "while"
     | ArrayKeyword -> "array"
     | SmartPointerKeyword -> "smartpointer"
+    | WhereKeyword -> "where"
+    | NumKeyword -> "num"
+    | IntKeyword -> "int"
+    | RealKeyword -> "real"
 
 let getKeywordBaseType (keyword: Keyword) =
     match keyword with

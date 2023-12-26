@@ -5,27 +5,53 @@ open SyntaxTree
 open Tokens
 open Lexer
 
-let parseDeclarationReference : Parser<DeclarationReferenceSyntax> =
-    par {
-        let! identifier = matchToken IdentifierToken
-        let optionalModuleDeclarationAccess =
-            pipe2
-                (matchToken ColonToken)
-                (matchToken IdentifierToken)
-                (fun colon moduleDeclarationName -> colon, moduleDeclarationName)
-            |> ifCurrentKind ColonToken
-        match! optionalModuleDeclarationAccess with
-        | Some (colon, moduleDeclarationNameIdentifier) ->
-            return ModuleQualifierDeclarationReference {
-                moduleNameIdentifier = identifier
-                colon = colon
-                moduleDeclarationNameIdentifier = moduleDeclarationNameIdentifier
+
+
+module rec CapacityExpressions =
+    open SyntaxTree.CapacityExpressions
+
+    let parseCapacityExpression : Parser<CapacityExpressionSyntax> =
+        par {
+            match! currentKind with
+            // | statements?
+            | _ ->
+                return! parseBinaryCapacityExpression 0
+        }
+
+    let private parseBinaryCapacityExpression (parentPrecedence: int) =
+        let rec binaryRight left =
+            par {
+                match! currentKind |> map SyntaxFacts.getBinaryCapacityOperatorPrecedence with
+                | currentPrecedence when currentPrecedence > parentPrecedence ->
+                    let! operatorToken = nextToken
+                    let! right = parseBinaryCapacityExpression currentPrecedence
+                    return! binaryRight (BinaryCapacityExpression (left, operatorToken, right))
+                | _ -> return left
             }
-        | _ ->
-            return IdentifierDeclarationReference {
-                declarationNameIdentifier = identifier
-            }
-    }
+
+        par {
+            let! unaryOperatorPrecedence = currentKind |> map SyntaxFacts.getUnaryCapacityOperatorPrecedence
+            let! left =
+                if unaryOperatorPrecedence <> 0 && unaryOperatorPrecedence > parentPrecedence then
+                    pipe2
+                        nextToken
+                        (parseBinaryCapacityExpression unaryOperatorPrecedence)
+                        (fun operator operand -> failwith "shouldn't happen: no unary Capacity operators in the syntax")
+                else
+                    parsePrimaryCapacityExpression
+            return! binaryRight left
+        }
+
+    let private parsePrimaryCapacityExpression : Parser<CapacityExpressionSyntax> =
+        lexerMode TypeMode (par {
+            match! currentKind with
+            | IdentifierToken ->
+                let! identifier = nextToken
+                return IdentifierCapacityExpression identifier
+            | _ ->
+                let! number = matchToken NaturalNumberToken
+                return NaturalNumberCapacityExpression number
+        })
 
 module rec Types =
     open SyntaxTree.Types
@@ -63,13 +89,36 @@ module rec Types =
                 }
         }
 
+    type private TypeExpressionLeftRecursion =
+        | CapacityLeftRecursion of (Token * CapacityExpressions.CapacityExpressionSyntax * Token)
+        | RefLeftRecursion of (Token)
+        
+    let private tryParseOneTypeExpressionLeftRecursion =
+        par {
+            match! currentKind with
+            | OpenBracketToken ->
+                let! openBracket = nextToken
+                let! capacity = CapacityExpressions.parseCapacityExpression
+                let! closeBracket = matchToken CloseBracketToken
+                let leftRecursion = CapacityLeftRecursion (openBracket, capacity, closeBracket)
+                return Some leftRecursion
+            | (KeywordToken RefKeyword) ->
+                let! refKeyword = nextToken
+                let leftRecursion = RefLeftRecursion refKeyword
+                return Some leftRecursion
+            | _ ->
+                return None
+        }
+
     let parseTypeExpression : Parser<TypeExpressionSyntax> =
         lexerMode TypeMode (par {
             match! currentKind with
             | IdentifierToken ->
-                return! parseDeclarationReference |> map DeclarationReferenceTypeExpression
+                return! parseDeclarationReferenceWithOptionalTemplateApplication |> map DeclarationReferenceTypeExpression
             | TypeVariableIdentifierToken ->
                 return! nextToken |> map TypeVariableIdentifierTypeExpression
+            | PipeToken ->
+                return! parseClosureTypeExpression |> map ClosureTypeExpression
             | OpenParenthesisToken ->
                 let! openParenthesis = nextToken
                 match! currentKind with
@@ -81,7 +130,7 @@ module rec Types =
                     let! closeParenthesis = matchToken CloseParenthesisToken
                     let! restOfFunctionType = parseFunctionTypeExpressionStartingFromArguments
                     return
-                        (openParenthesis, ClosureTypeExpression closureType, closeParenthesis)
+                        (openParenthesis, ClosureTypeExpressionOfFunction closureType, closeParenthesis)
                         |> restOfFunctionType
                         |> FunctionTypeExpression
                 | _ ->
@@ -99,7 +148,7 @@ module rec Types =
                         // this is one of the two valid cases of function type, so let's parse that
                         let! restOfFunctionType = parseFunctionTypeExpressionStartingFromArguments
                         return
-                            (openParenthesis, ClosureTypeVariable typeVariable, closeParenthesis)
+                            (openParenthesis, ClosureTypeVariableOfFunction typeVariable, closeParenthesis)
                             |> restOfFunctionType
                             |> FunctionTypeExpression
                     | _ ->
@@ -145,20 +194,49 @@ module rec Types =
                 //let! _skip = skipSilent // this hurts recovery from e.g. "alias a = { a: a; a: }" so let's turn it off for now? idk why it was added
                 return unitType |> BuiltInTypeExpression
         })
+        |> fun parsePrimaryTypeExpression ->
+            par {
+                let! primaryTypeExpression = parsePrimaryTypeExpression
+                let! leftRecursion = many tryParseOneTypeExpressionLeftRecursion
+                return
+                    leftRecursion
+                    |> List.fold (fun foldingTypeExpression lRec ->
+                        match lRec with
+                        | CapacityLeftRecursion (openBracket, capacity, closeBracket) ->
+                            CapacityTypeExpression {
+                                typeExpression = foldingTypeExpression
+                                openBracket = openBracket
+                                capacityExpression = capacity
+                                closeBracket = closeBracket
+                            }
+                        | RefLeftRecursion (refKeyword) ->
+                            RefTypeExpression {
+                                typeExpression = foldingTypeExpression
+                                refKeyword = refKeyword
+                            }
+                    ) primaryTypeExpression
+            }
+        |> fun parseTypeExceptTuple ->
+            par {
+                match! many1Sep parseTypeExceptTuple StarToken with
+                | SeparatedNonEmptySyntaxList (singleItem, []) -> return singleItem
+                | multipleItems -> return TupleTypeExpression multipleItems
+            }
 
 
     let parseIdentifierWithType : Parser<IdentifierWithType> =
-        pipe3
-            (matchToken IdentifierToken)
-            (matchToken ColonToken)
-            (Types.parseTypeExpression)
-            (fun identifier colon typeExpression ->
-                {
+        par {
+            let! identifier = matchToken IdentifierToken
+            return! lexerMode TypeMode (par {
+                let! colon = matchToken ColonToken
+                let! typeExpression = Types.parseTypeExpression
+                return {
                     identifier = identifier
                     colon = colon
                     requiredType = typeExpression
                 }
-            )
+            })
+        }
 
     let parseOptionalType : Parser<(Token * TypeExpressionSyntax) option> =
         lexerMode TypeMode (
@@ -179,19 +257,145 @@ module rec Types =
             }
         }
 
+    let parseTemplateApplication : Parser<Types.TemplateApplicationSyntax> =
+        let parseTemplateApplicationCapacityExpressions =
+            lexerMode TypeMode (par {
+                let! semicolon = matchToken SemicolonToken
+                let! capacityExpressions = many1Sep CapacityExpressions.parseCapacityExpression CommaToken
+                return {
+                    semicolon = semicolon
+                    capacities = capacityExpressions
+                }
+            })
+        lexerMode TypeMode (par {
+            let! lessThan = matchToken LessThanToken
+            let! templateApplicationTypes = many1Sep Types.parseTypeExpression CommaToken
+            let! optionalCapacities =
+                parseTemplateApplicationCapacityExpressions
+                |> ifCurrentKind SemicolonToken
+            let! greaterThan = matchToken GreaterThanToken
+            return {
+                lessThanSign = lessThan
+                templateApplicationTypes = templateApplicationTypes
+                optionalCapacityExpressions = optionalCapacities
+                greaterThanSign = greaterThan
+            }
+        })
 
-let parseTemplateApplication : Parser<TemplateApplicationSyntax> =
-    lexerMode TypeMode (
-        pipe3
-            (matchToken LessThanToken)
-            (many1Sep Types.parseTypeExpression CommaToken)
-            (matchToken GreaterThanToken)
-            (fun lt types gt -> {
-                lessThanSign = lt
-                templateApplicationTypes = types
-                greaterThanSign = gt
-            }) 
-    )
+    let parseDeclarationReferenceWithOptionalTemplateApplication : Parser<DeclarationReferenceSyntax * (Types.TemplateApplicationSyntax option)> =
+        par {
+            let! firstIdentifier = nextToken
+            let! currentToken = current
+            match! ret (firstIdentifier, currentToken) with
+            // all cases we have to cover:
+            // module:member[<...>]
+            // id[<...>]
+            // cases which we only parse partially:
+            // id: ty
+            //   ^
+            // id :ty
+            //    ^
+            // id : ty
+            //    ^
+            // id <
+            //    ^
+            // module:member <
+            //               ^
+            | ({ trailingTrivia = []}, { tokenKind = ColonToken; trailingTrivia = [] }) ->
+                // moduleName:_
+                //           ^
+                let! colon = nextToken
+                let! moduleNameDeclarationIDentifier = matchToken IdentifierToken
+                let! currentToken = current
+                let! optionalTemplateApply =
+                    par {
+                        match! ret (moduleNameDeclarationIDentifier, currentToken) with
+                        | ({ trailingTrivia = [] }, { tokenKind = LessThanToken }) ->
+                            // moduleName:member<
+                            //                  ^
+                            let! templateApplication = parseTemplateApplication
+                            return Some templateApplication
+                        | _ ->
+                            //moduleName:member(**)
+                            //                     ^
+                            //moduleName:member <
+                            //                  ^
+                            //moduleName:member _
+                            //                  ^
+                            return None
+                    }
+                let moduleQualifier = ModuleQualifierDeclarationReference {
+                    moduleNameIdentifier = firstIdentifier
+                    colon = colon
+                    moduleDeclarationNameIdentifier = moduleNameDeclarationIDentifier
+                }
+                return (moduleQualifier, optionalTemplateApply)
+            | ({ trailingTrivia = [] }, { tokenKind = LessThanToken }) ->
+                // identifier<
+                //           ^
+                let! templateApplication = parseTemplateApplication
+                return (IdentifierDeclarationReference { declarationNameIdentifier = firstIdentifier } , Some templateApplication)
+            | _ ->
+                // identifier(**)
+                //               ^
+                // identifier <
+                //            ^
+                // identifier: _
+                //           ^
+                // identifier :
+                //            ^
+                // identifier _
+                //            ^
+                return (IdentifierDeclarationReference { declarationNameIdentifier = firstIdentifier } , None)
+        }
+
+    let private parseConstraint : Parser<ConstraintSyntax> =
+        lexerMode TypeMode (par {
+            match! currentKind with
+            | KeywordToken NumKeyword ->
+                return! nextToken |> map NumConstraint
+            | KeywordToken IntKeyword ->
+                return! nextToken |> map IntConstraint
+            | KeywordToken RealKeyword ->
+                return! nextToken |> map RealConstraint
+            | KeywordToken PackedKeyword ->
+                return! nextToken |> map PackedConstraint
+            | OpenBraceToken ->
+                let! openBrace = nextToken
+                let! memberConstraints = many1Sep parseIdentifierWithType SemicolonToken
+                let! closeBrace = nextToken
+                return MemberConstraint {
+                    openBrace = openBrace
+                    fieldConstraints = memberConstraints
+                    closeBrace = closeBrace
+                }
+            | _ ->
+                let! num = matchToken (KeywordToken NumKeyword)
+                do! skipSilent
+                return NumConstraint num
+        })
+
+    let private parseTypeConstraint : Parser<TypeConstraintSyntax> =
+        par {
+            let! typeExpression = parseTypeExpression
+            let! colon = matchToken ColonToken
+            let! constraint = parseConstraint
+            return {
+                typeExpression = typeExpression
+                colon = colon
+                constraint = constraint
+            }
+        }
+
+    let parseWhereConstraints : Parser<WhereConstraintsSyntax> =
+        lexerMode TypeMode (par {
+            let! whereKeyword = matchToken (KeywordToken WhereKeyword)
+            let! typeConstraints = many1Sep parseTypeConstraint CommaToken
+            return {
+                whereKeyword = whereKeyword
+                typeConstraints = typeConstraints
+            }
+        })
 
 module Patterns =
     open SyntaxTree.Patterns
@@ -228,7 +432,7 @@ module Patterns =
                 // id
                 | ({ trailingTrivia = []}, { tokenKind = ColonToken; trailingTrivia = [] }) ->
                     // moduleName:
-                    //           ^ 
+                    //           ^
                     let! colon = nextToken
                     let! moduleMember = matchToken IdentifierToken
                     let! restOfValCon = parseValConRest
@@ -326,7 +530,7 @@ module Patterns =
     and parseValConRest : Parser<DeclarationReferenceSyntax -> PatternSyntax> =
         par {
             let! optionalTemplateApplication =
-                parseTemplateApplication
+                Types.parseTemplateApplication
                 |> ifCurrentKind LessThanToken
             let! openParenthesis = matchToken OpenParenthesisToken
             let! valConArguments =
@@ -360,6 +564,9 @@ module rec Expressions =
 
     type private ExpressionLeftRecursion =
         | FunctionCallLeftRecursion of Token * SeparatedSyntaxList<ExpressionSyntax> * Token
+        | IndexerLeftRecursion of (Token * ExpressionSyntax * Token)
+        | MemberAccessLeftRecursion of (Token * Token)
+        | TypeLeftRecursion of (Token * Types.TypeExpressionSyntax)
 
     let parseExpression : Parser<ExpressionSyntax> =
         par {
@@ -393,6 +600,18 @@ module rec Expressions =
             return! binaryRight left
         }
 
+    let parseFieldAssign =
+        par {
+            let! fieldNameIdentifier = matchToken IdentifierToken
+            let! equals = matchToken EqualsToken
+            let! expression = parseExpression
+            return {
+                fieldNameIdentifier = fieldNameIdentifier
+                equals = equals
+                expression = expression
+            }
+        }
+
     let private parsePrimaryExpression : Parser<ExpressionSyntax> =
         let tryParseOneLeftRecursiveTerm: Parser<ExpressionLeftRecursion option> =
             par {
@@ -403,17 +622,32 @@ module rec Expressions =
                     let! closeParenthesis = matchToken CloseParenthesisToken
                     let leftRecursion = FunctionCallLeftRecursion (openParenthesis, arguments, closeParenthesis)
                     return Some leftRecursion
+                | OpenBracketToken ->
+                    let! openBracket = nextToken
+                    let! indexExpression = parseExpression
+                    let! closeBracket = matchToken CloseBracketToken
+                    let leftRecursion = IndexerLeftRecursion (openBracket, indexExpression, closeBracket)
+                    return Some leftRecursion
+                | DotToken ->
+                    let! dot = nextToken
+                    let! identifier = matchToken IdentifierToken
+                    let leftRecursion = MemberAccessLeftRecursion (dot, identifier)
+                    return Some leftRecursion
+                | ColonToken ->
+                    return! lexerMode TypeMode (par {
+                        let! colon = nextToken
+                        let! typeExpression = Types.parseTypeExpression
+                        let leftRecursion = TypeLeftRecursion (colon, typeExpression)
+                        return Some leftRecursion
+                        
+                    })
                 | _ ->
                     return None
             }
         par {
             match! currentKind with
             | IdentifierToken ->
-                let! declarationReference = parseDeclarationReference
-                let! optionalTemplateApplication =
-                    parseTemplateApplication
-                    |> ifCurrentKind LessThanToken
-                return DeclarationReferenceExpressionSyntax (declarationReference, optionalTemplateApplication)
+                return! Types.parseDeclarationReferenceWithOptionalTemplateApplication |> map DeclarationReferenceExpressionSyntax
             | KeywordToken TrueKeyword
             | KeywordToken FalseKeyword ->
                 return! nextToken |> map BoolLiteralExpression
@@ -523,14 +757,16 @@ module rec Expressions =
             | KeywordToken VarKeyword ->
                 let! varKeyword = matchToken (KeywordToken VarKeyword)
                 let! variableIdentifier = matchToken IdentifierToken
-                let! colonToken = matchToken ColonToken
-                let! variableType = Types.parseTypeExpression
-                return VariableDeclaration {
-                    varKeyword = varKeyword
-                    variableIdentifier = variableIdentifier
-                    colonToken = colonToken
-                    variableType = variableType
-                }
+                return! lexerMode TypeMode (par {
+                    let! colonToken = matchToken ColonToken
+                    let! variableType = Types.parseTypeExpression
+                    return VariableDeclaration {
+                        varKeyword = varKeyword
+                        variableIdentifier = variableIdentifier
+                        colonToken = colonToken
+                        variableType = variableType
+                    }
+                })
             | KeywordToken SetKeyword ->
                 let! setKeyword = matchToken (KeywordToken SetKeyword)
                 let! optionalRefKeyword =
@@ -555,6 +791,7 @@ module rec Expressions =
                         Types.parseTypeExpression
                         (fun colon tyExpr -> colon, tyExpr)
                     |> ifCurrentKind ColonToken
+                    |> lexerMode TypeMode
                 let! inKeyword = matchToken (KeywordToken InKeyword)
                 let! startExpression = parseExpression
                 let! direction =
@@ -607,6 +844,36 @@ module rec Expressions =
                     bodyExpression = bodyExpression
                     endKeyword = endKeyword
                 }
+            | KeywordToken ArrayKeyword ->
+                let! arrayStart =
+                    lexerMode TypeMode (par {
+                        let! arrayKeyword = matchToken (KeywordToken ArrayKeyword)
+                        let! arrayTypeExpression = Types.parseTypeExpression
+                        return (arrayKeyword, arrayTypeExpression)
+                    })
+                let (arrayKeyword, arrayTypeExpression) = arrayStart
+                match! currentKind with
+                | KeywordToken OfKeyword ->
+                    let! ofKeyword = matchToken (KeywordToken OfKeyword)
+                    let! initializerExpression = parseExpression
+                    let! endKeyword = matchToken (KeywordToken EndKeyword)
+                    return ArrayExpression {
+                        arrayKeyword = arrayKeyword
+                        arrayTypeExpression = arrayTypeExpression
+                        optionalInitializerExpression = Some {
+                            ofKeyword = ofKeyword
+                            initializerExpression = initializerExpression
+                        }
+                        endKeyword = endKeyword
+                    }
+                | _ ->
+                    let! endKeyword = matchToken (KeywordToken EndKeyword)
+                    return ArrayExpression {
+                        arrayKeyword = arrayKeyword
+                        arrayTypeExpression = arrayTypeExpression
+                        optionalInitializerExpression = None
+                        endKeyword = endKeyword
+                    }
             (*
             | OpenBracketToken ->
                 let! openBracket = nextToken
@@ -629,6 +896,20 @@ module rec Expressions =
                     destructorExpression = destructorExpression
                     closeParenthesis = closeParenthesis
                 }
+            | KeywordToken PackedKeyword
+            | OpenBraceToken ->
+                let! optionalPackedKeyword =
+                    nextToken
+                    |> ifCurrentKind (KeywordToken PackedKeyword)
+                let! openBrace = matchToken OpenBraceToken
+                let! fieldAssigns = many1Sep parseFieldAssign SemicolonToken
+                let! closeBrace = matchToken CloseBraceToken
+                return RecordExpression {
+                    optionalPackedKeyword = optionalPackedKeyword
+                    openBrace = openBrace
+                    fieldAssigns = fieldAssigns
+                    closeBrace = closeBrace
+                }
             | _ ->
                 return! matchToken IntLiteralToken |> map NumberExpressionSyntax
         }
@@ -638,14 +919,33 @@ module rec Expressions =
                 let! leftRecursion = many tryParseOneLeftRecursiveTerm
                 return
                     leftRecursion
-                    |> List.fold (fun exp lRec ->
+                    |> List.fold (fun foldingExpression lRec ->
                         match lRec with
                         | FunctionCallLeftRecursion (openParens, args, closeParens) ->
                             FunctionCallExpression {
-                                functionExpression = exp
+                                functionExpression = foldingExpression
                                 openParenthesis = openParens
                                 functionCallArguments = args
                                 closeParenthesis = closeParens
+                            }
+                        | IndexerLeftRecursion (openBracket, indexExpression, closeBracket) ->
+                            IndexerExpression {
+                                expression = foldingExpression
+                                openBracket = openBracket
+                                indexExpression = indexExpression
+                                closeBracket = closeBracket
+                            }
+                        | MemberAccessLeftRecursion (dot, identifier) ->
+                            MemberAccessExpression {
+                                expression = foldingExpression
+                                dot = dot
+                                identifier = identifier
+                            }
+                        | TypeLeftRecursion (colon, typeExpression) ->
+                            TypedExpression {
+                                expression = foldingExpression
+                                colon = colon
+                                typeExpression = typeExpression
                             }
                     ) expression
             }
@@ -779,17 +1079,29 @@ module Declarations =
                 | _ ->
                     return! matchToken TypeVariableIdentifierToken
             }
-        lexerMode TypeMode (
-            pipe3
-                (matchToken (LessThanToken))
-                (many1Sep parseTypeVariableIdentifier CommaToken)
-                (matchToken (GreaterThanToken))
-                (fun lt typeVariables gt -> {
-                    lessThanSign = lt
-                    typeVariables = typeVariables
-                    greaterThanSign = gt
-                })
-        )
+        let parseCapacityIdentifiers =
+            lexerMode TypeMode (par {
+                let! semicolon = matchToken SemicolonToken
+                let! identifiers = many1Sep (matchToken IdentifierToken) CommaToken
+                return {
+                    semicolon = semicolon
+                    capacityIdentifiers = identifiers
+                }
+            })
+        lexerMode TypeMode (par {
+            let! lessThan = matchToken LessThanToken
+            let! typeVariables = many1Sep parseTypeVariableIdentifier CommaToken
+            let! optionalCapacityIdentifiers =
+                parseCapacityIdentifiers
+                |> ifCurrentKind SemicolonToken
+            let! greaterThan = matchToken GreaterThanToken
+            return {
+                lessThanSign = lessThan
+                typeVariables = typeVariables
+                optionalCapacityIdentifiers = optionalCapacityIdentifiers
+                greaterThanSign = greaterThan
+            }
+        })
 
     let private parseValueConstructor : Parser<ValueConstructorSyntax> =
         par {
@@ -881,8 +1193,10 @@ module Declarations =
             let! functionArguments =
                 manySep Types.parseIdentifierWithOptionalType CommaToken CloseParenthesisToken
             let! closeParenthesis = matchToken CloseParenthesisToken
-            // TODO constraints
             let! optionalType = Types.parseOptionalType
+            let! optionalWhereConstraints =
+                Types.parseWhereConstraints
+                |> ifCurrentKind (KeywordToken WhereKeyword)
             let! equal = matchToken EqualsToken
             let! functionBody = Expressions.parseExpression
             return {
@@ -893,6 +1207,7 @@ module Declarations =
                 functionArguments = functionArguments
                 closeParenthesis = closeParenthesis
                 optionalType = optionalType
+                optionalWhereConstraints = optionalWhereConstraints
                 equals = equal
                 functionBody = functionBody
             }

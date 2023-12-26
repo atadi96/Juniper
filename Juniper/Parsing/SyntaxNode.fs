@@ -13,15 +13,29 @@ type NodeKind =
     | AliasKind
     | InlineCppDeclarationKind
     | TemplateDeclarationKind
+    | TemplateDeclarationCapacityIdentifiersKind
     | TemplateApplicationKind
+    | TemplateApplicationCapacityExpressionsKind
+    | NaturalNumberCapacityExpressionKind
+    | BinaryCapacityExpressionKind
+    | IdentifierCapacityExpressionKind
     | ValueConstructorKind
     | FunctionDeclarationKind
+    | WhereConstraintsKind
+    | TypeConstraintKind
+    | NumConstraintKind
+    | IntConstraintKind
+    | RealConstraintKind
+    | PackedConstraintKind
+    | MemberConstraintKind
+    | SingleMemberConstraintKind
     | ModuleQualifierKind
     | IdentifierDeclarationReferenceKind
     | FunctionTypeExpressionKind
     | ClosureTypeExpressionKind
     | IdentifierWithOptionalTypeKind
     | RecordTypeExpressionKind
+    | TupleTypeExpressionKind
     | FunctionCallExpressionKind
     | IfExpressionKind
     | ElifBranchKind
@@ -38,7 +52,10 @@ type NodeKind =
     | VariablePatternKind
     | ValConPatternKind
     | ClosureTypeVariableKind
+    | DeclarationReferenceTypeExpressionKind
     | BuiltInTypeExpressionKind
+    | RefTypeExpressionKind
+    | CapacityTypeExpressionKind
     | TypeVariableIdentifierTypeExpressionKind
     | ParenthesizedTypeExpressionSyntaxKind
     | UnitLiteralExpressionKind
@@ -52,8 +69,15 @@ type NodeKind =
     | StringLiteralExpressionKind
     | CharacterArrayLiteralExpressionKind
     | DeclarationReferenceExpressionKind
+    | ArrayExpressionKind
+    | ArrayInitializerKind
+    | IndexerExpressionKind
+    | MemberAccessExpressionKind
+    | TypedExpressionKind
     | InlineCppExpressionKind
     | SmartPointerExpressionKind
+    | FieldAssignKind
+    | RecordExpressionKind
     | TupleExpressionKind
     | ArrayAccessLeftAssignKind
     | RecordMemberLeftAssignKind
@@ -143,10 +167,13 @@ type SyntaxNode =
 
                 let tokenColor =
                     match token.Token.tokenKind with
-                    | KeywordToken _ -> System.ConsoleColor.Blue
+                    | KeywordToken _ 
+                    | ArrowToken -> System.ConsoleColor.Blue
                     | IdentifierToken -> System.ConsoleColor.Yellow
                     | IntLiteralToken
                     | StringLiteralToken -> System.ConsoleColor.DarkYellow
+                    | TypeVariableIdentifierToken -> System.ConsoleColor.Green
+                    | InlineCppToken -> System.ConsoleColor.DarkBlue
                     | _ -> System.ConsoleColor.White
 
                 setColor (if hasError then System.ConsoleColor.DarkRed else tokenColor)
@@ -162,6 +189,7 @@ type SyntaxNode =
                 node.Children |> Seq.fold write hasError
         write false node
         |> ignore
+        resetColor()
 
     static member WriteTo (writer: System.IO.TextWriter) (node: ISyntaxNode) =
         let print format = Printf.ksprintf (Printf.fprintf writer "%s") format
@@ -254,6 +282,7 @@ type SyntaxNode =
 
                 writeChildren childIndent (node.Children |> List.ofSeq)
         write "" true node
+        resetColor()
 
             
 
@@ -316,17 +345,47 @@ type SyntaxNode =
               yield! this.openedModuleNameIdentifiers |> SyntaxNode.FromList SyntaxNode.From
               this.closeParenthesis |> SyntaxNode.From
             ]
+    static member From(this: TemplateDeclarationCapacityIdentifiersSyntax) =
+        SyntaxNode.fromChildren TemplateDeclarationCapacityIdentifiersKind
+            [ SyntaxNode.From this.semicolon
+              yield! this.capacityIdentifiers |> SyntaxNode.FromNonEmptyList SyntaxNode.From
+            ]
     static member From(this: TemplateDeclarationSyntax) =
         SyntaxNode.fromChildren TemplateDeclarationKind
             [ SyntaxNode.From this.lessThanSign
               yield! this.typeVariables |> SyntaxNode.FromNonEmptyList SyntaxNode.From
+              yield! this.optionalCapacityIdentifiers |> SyntaxNode.FromOption SyntaxNode.From
               SyntaxNode.From this.greaterThanSign
+            ]
+    static member From(this: CapacityExpressions.CapacityExpressionSyntax) =
+        match this with
+        | CapacityExpressions.NaturalNumberCapacityExpression naturalToken ->
+            SyntaxNode.fromChildren
+                NaturalNumberCapacityExpressionKind
+                [ SyntaxNode.From naturalToken]
+        | CapacityExpressions.BinaryCapacityExpression (left, operator, right) ->
+            SyntaxNode.fromChildren
+                BinaryCapacityExpressionKind
+                [ SyntaxNode.From left
+                  SyntaxNode.From operator
+                  SyntaxNode.From right
+                ]
+        | CapacityExpressions.IdentifierCapacityExpression identifierToken ->
+            SyntaxNode.fromChildren
+                IdentifierCapacityExpressionKind
+                [ SyntaxNode.From identifierToken ]
+    static member From(this: TemplateApplicationCapacityExpressionsSyntax) =
+        SyntaxNode.fromChildren
+            TemplateApplicationCapacityExpressionsKind
+            [ SyntaxNode.From this.semicolon
+              yield! this.capacities |> SyntaxNode.FromNonEmptyList SyntaxNode.From
             ]
     static member From(this: TemplateApplicationSyntax) =
         SyntaxNode.fromChildren
             TemplateApplicationKind
             [ SyntaxNode.From this.lessThanSign
               yield! this.templateApplicationTypes |> SyntaxNode.FromNonEmptyList SyntaxNode.From
+              yield! this.optionalCapacityExpressions |> SyntaxNode.FromOption SyntaxNode.From
               SyntaxNode.From this.greaterThanSign
             ]
     static member From(this: AlgebraicTypeSyntax) =
@@ -364,6 +423,46 @@ type SyntaxNode =
               SyntaxNode.From this.equals
               SyntaxNode.From this.body
             ]
+    static member From(this: MemberConstraintSyntax) =
+        SyntaxNode.fromChildren
+            MemberConstraintKind
+            [ SyntaxNode.From this.openBrace
+              yield! this.fieldConstraints |> SyntaxNode.FromNonEmptyList (SyntaxNode.FromIdWithType >> SyntaxNode.fromChildren SingleMemberConstraintKind)
+              SyntaxNode.From this.closeBrace
+            ]
+    static member From(this: ConstraintSyntax) =
+        match this with
+        | NumConstraint numToken ->
+            SyntaxNode.fromChildren
+                NumConstraintKind
+                [ SyntaxNode.From numToken ]
+        | IntConstraint intToken ->
+            SyntaxNode.fromChildren
+                IntConstraintKind
+                [ SyntaxNode.From intToken ]
+        | RealConstraint realToken ->
+            SyntaxNode.fromChildren
+                RealConstraintKind
+                [ SyntaxNode.From realToken ]
+        | PackedConstraint packedToken ->
+            SyntaxNode.fromChildren
+                PackedConstraintKind
+                [ SyntaxNode.From packedToken ]
+        | MemberConstraint memberConstraintSyntax ->
+            SyntaxNode.From memberConstraintSyntax
+    static member From(this: TypeConstraintSyntax) =
+        SyntaxNode.fromChildren
+            TypeConstraintKind
+            [ SyntaxNode.From this.typeExpression
+              SyntaxNode.From this.colon
+              SyntaxNode.From this.constraint
+            ]
+    static member From(this: WhereConstraintsSyntax) =
+        SyntaxNode.fromChildren
+            WhereConstraintsKind
+            [ SyntaxNode.From this.whereKeyword
+              yield! this.typeConstraints |> SyntaxNode.FromNonEmptyList SyntaxNode.From
+            ]
     static member From(this: FunctionDeclarationSyntax) =
         SyntaxNode.fromChildren
             FunctionDeclarationKind
@@ -374,6 +473,7 @@ type SyntaxNode =
               yield! this.functionArguments |> SyntaxNode.FromList SyntaxNode.From
               SyntaxNode.From this.closeParenthesis
               yield! this.optionalType |> SyntaxNode.FromOptionalType
+              yield! this.optionalWhereConstraints |> SyntaxNode.FromOption SyntaxNode.From
               SyntaxNode.From this.equals
               SyntaxNode.From this.functionBody
             ]
@@ -424,9 +524,9 @@ type SyntaxNode =
             ]
     static member From(this: ClosureOfFunctionSyntax): ISyntaxNode =
         match this with
-        | ClosureTypeExpression closureTypeExpressionSyntax ->
+        | ClosureTypeExpressionOfFunction closureTypeExpressionSyntax ->
             SyntaxNode.From closureTypeExpressionSyntax
-        | ClosureTypeVariable token ->
+        | ClosureTypeVariableOfFunction token ->
             SyntaxNode.fromChildren ClosureTypeVariableKind [SyntaxNode.From token]
     static member From(this: RecordTypeExpressionSyntax) =
         SyntaxNode.fromChildren
@@ -439,10 +539,28 @@ type SyntaxNode =
                   |> Seq.collect id
               SyntaxNode.From this.closeBrace
             ]
+    static member From(this: CapacityTypeExpressionSyntax) =
+        SyntaxNode.fromChildren
+            CapacityTypeExpressionKind
+            [ SyntaxNode.From this.typeExpression
+              SyntaxNode.From this.openBracket
+              SyntaxNode.From this.capacityExpression
+              SyntaxNode.From this.closeBracket
+            ]
+    static member From(this: RefTypeExpressionSyntax) =
+        SyntaxNode.fromChildren
+            RefTypeExpressionKind
+            [ SyntaxNode.From this.typeExpression
+              SyntaxNode.From this.refKeyword
+            ]
     static member From(this: TypeExpressionSyntax) =
         match this with
-        | DeclarationReferenceTypeExpression declarationReferenceSyntax ->
-            SyntaxNode.From declarationReferenceSyntax
+        | DeclarationReferenceTypeExpression (declarationReferenceSyntax, optionalTemplateApplicationSyntax) ->
+            SyntaxNode.fromChildren
+                DeclarationReferenceTypeExpressionKind
+                [ SyntaxNode.From declarationReferenceSyntax
+                  yield! optionalTemplateApplicationSyntax |> SyntaxNode.FromOption SyntaxNode.From
+                ]
         | BuiltInTypeExpression token ->
             SyntaxNode.fromChildren
                 BuiltInTypeExpressionKind
@@ -462,6 +580,16 @@ type SyntaxNode =
                 ]
         | RecordTypeExpression recordTypeExpressionSyntax ->
             SyntaxNode.From recordTypeExpressionSyntax
+        | CapacityTypeExpression capacityTypeExpressionSyntax ->
+            SyntaxNode.From capacityTypeExpressionSyntax
+        | RefTypeExpression refTypeExpressionSyntax ->
+            SyntaxNode.From refTypeExpressionSyntax
+        | TupleTypeExpression tupleTypeElements ->
+            SyntaxNode.fromChildren
+                TupleTypeExpressionKind
+                [ yield! tupleTypeElements |> SyntaxNode.FromNonEmptyList SyntaxNode.From ]
+        | ClosureTypeExpression closureTypeExpressionSyntax ->
+            SyntaxNode.From closureTypeExpressionSyntax
     static member From(this: FunctionCallExpressionSyntax) =
         SyntaxNode.fromChildren
             FunctionCallExpressionKind
@@ -520,6 +648,49 @@ type SyntaxNode =
               yield! this.caseClauses |> SyntaxNode.FromNonEmptyList SyntaxNode.From
               SyntaxNode.From this.endKeyword
             ]
+    static member From(this: ArrayInitializerSyntax) =
+        SyntaxNode.fromChildren
+            ArrayInitializerKind
+            [ SyntaxNode.From this.ofKeyword
+              SyntaxNode.From this.initializerExpression
+            ]
+    static member From(this: IndexerExpressionSyntax) =
+        SyntaxNode.fromChildren
+            IndexerExpressionKind
+            [ SyntaxNode.From this.expression
+              SyntaxNode.From this.openBracket
+              SyntaxNode.From this.indexExpression
+              SyntaxNode.From this.closeBracket
+            ]
+    static member From(this: MemberAccessExpressionSyntax) =
+        SyntaxNode.fromChildren
+            MemberAccessExpressionKind
+            [ SyntaxNode.From this.expression
+              SyntaxNode.From this.dot
+              SyntaxNode.From this.identifier
+            ]
+    static member From(this: TypedExpressionSyntax) =
+        SyntaxNode.fromChildren
+            TypedExpressionKind
+            [ SyntaxNode.From this.expression
+              SyntaxNode.From this.colon
+              SyntaxNode.From this.typeExpression
+            ]
+    static member From(this: FieldAssignSyntax) =
+        SyntaxNode.fromChildren
+            FieldAssignKind
+            [ SyntaxNode.From this.fieldNameIdentifier
+              SyntaxNode.From this.equals
+              SyntaxNode.From this.expression
+            ]
+    static member From(this: RecordExpressionSyntax) =
+        SyntaxNode.fromChildren
+            RecordExpressionKind
+            [ yield! this.optionalPackedKeyword |> SyntaxNode.FromOption SyntaxNode.From
+              SyntaxNode.From this.openBrace
+              yield! this.fieldAssigns |> SyntaxNode.FromNonEmptyList SyntaxNode.From
+              SyntaxNode.From this.closeBrace
+            ]
     static member From(this: ExpressionSyntax): ISyntaxNode =
         match this with
         | UnitLiteralExpression (openParenthesis, closeParenthesis) ->
@@ -532,6 +703,8 @@ type SyntaxNode =
             SyntaxNode.fromChildren UnaryExpressionKind [SyntaxNode.From opToken; SyntaxNode.From expression]
         | BinaryExpressionSyntax (leftExpression, opToken, rightExpression) ->
             SyntaxNode.fromChildren BinaryExpressionKind [SyntaxNode.From leftExpression; SyntaxNode.From opToken; SyntaxNode.From rightExpression]
+        | IndexerExpression indexerExpression ->
+            SyntaxNode.From indexerExpression
         | NumberExpressionSyntax token ->
             SyntaxNode.fromChildren NumberExpressionKind [SyntaxNode.From token]
         | ParenthesizedExpressionSyntax (openParenthesis, expression, closeParenthesis) ->
@@ -612,6 +785,18 @@ type SyntaxNode =
                   SyntaxNode.From whileDoExpression.bodyExpression
                   SyntaxNode.From whileDoExpression.endKeyword
                 ]
+        | MemberAccessExpression memberAccessExpression ->
+            SyntaxNode.From memberAccessExpression
+        | TypedExpression typedExpression ->
+            SyntaxNode.From typedExpression
+        | ArrayExpression arrayExpression ->
+            SyntaxNode.fromChildren
+                ArrayExpressionKind
+                [ SyntaxNode.From arrayExpression.arrayKeyword
+                  SyntaxNode.From arrayExpression.arrayTypeExpression
+                  yield! arrayExpression.optionalInitializerExpression |> SyntaxNode.FromOption SyntaxNode.From
+                  SyntaxNode.From arrayExpression.endKeyword
+                ]
         | SmartPointerExpression smartPointerExpression ->
             SyntaxNode.fromChildren
                 SmartPointerExpressionKind
@@ -621,6 +806,8 @@ type SyntaxNode =
                   SyntaxNode.From smartPointerExpression.comma
                   SyntaxNode.From smartPointerExpression.destructorExpression
                   SyntaxNode.From smartPointerExpression.closeParenthesis]
+        | RecordExpression recordExpressionSyntax ->
+            SyntaxNode.From recordExpressionSyntax
         | TupleExpression (openParenthesis, elements, closeParenthesis) ->
             SyntaxNode.fromChildren
                 TupleExpressionKind

@@ -37,6 +37,7 @@ type TokenValue =
     | TypeVariableIdentifierValue of string
     | InlineCppCodeValue of string
     | BoolValue of bool
+    | NaturalValue of uint64
 
 type Keyword =
     | ModuleKeyword
@@ -88,6 +89,10 @@ type Keyword =
     | DoKeyword
     | WhileKeyword
     | SmartPointerKeyword
+    | WhereKeyword
+    | NumKeyword
+    | IntKeyword
+    | RealKeyword
 
 type TokenKind =
     | BadToken
@@ -131,6 +136,7 @@ type TokenKind =
     | IdentifierToken
     | TypeVariableIdentifierToken
     | DotToken
+    | NaturalNumberToken
 
 type SyntaxTriviaKind =
     | SingleLineCommentTrivia

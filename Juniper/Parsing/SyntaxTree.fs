@@ -45,6 +45,12 @@ type DeclarationReferenceSyntax =
     | IdentifierDeclarationReference of IdentifierDeclarationReferenceSyntax
     | ModuleQualifierDeclarationReference of ModuleQualifierSyntax
 
+module CapacityExpressions =
+    type CapacityExpressionSyntax =
+        | BinaryCapacityExpression of CapacityExpressionSyntax * Token * CapacityExpressionSyntax
+        | IdentifierCapacityExpression of Token
+        | NaturalNumberCapacityExpression of Token
+
 module Types =
 
     type RecordTypeExpressionSyntax =
@@ -53,6 +59,33 @@ module Types =
             openBrace: Token
             recordMemberTypes: SeparatedSyntaxList<IdentifierWithType>
             closeBrace: Token
+        }
+
+    and MemberConstraintSyntax =
+        {
+            openBrace: Token
+            fieldConstraints: SeparatedNonEmptySyntaxList<IdentifierWithType>
+            closeBrace: Token
+        }
+
+    and ConstraintSyntax =
+        | NumConstraint of Token
+        | IntConstraint of Token
+        | RealConstraint of Token
+        | PackedConstraint of Token
+        | MemberConstraint of MemberConstraintSyntax
+
+    and TypeConstraintSyntax =
+        {
+            typeExpression: TypeExpressionSyntax
+            colon: Token
+            constraint: ConstraintSyntax
+        }
+
+    and WhereConstraintsSyntax =
+        {
+            whereKeyword: Token
+            typeConstraints: SeparatedNonEmptySyntaxList<TypeConstraintSyntax>
         }
 
     and FunctionTypeExpressionSyntax =
@@ -66,15 +99,32 @@ module Types =
             arrow: Token
             returnType: TypeExpressionSyntax
         }
+    
+    and CapacityTypeExpressionSyntax =
+        {
+            typeExpression: TypeExpressionSyntax
+            openBracket: Token
+            capacityExpression: CapacityExpressions.CapacityExpressionSyntax
+            closeBracket: Token
+        }
+    
+    and RefTypeExpressionSyntax =
+        {
+            typeExpression: TypeExpressionSyntax
+            refKeyword: Token
+        }
 
     and TypeExpressionSyntax =
-        | DeclarationReferenceTypeExpression of DeclarationReferenceSyntax
+        | DeclarationReferenceTypeExpression of DeclarationReferenceSyntax * (TemplateApplicationSyntax option)
         | BuiltInTypeExpression of Token
         | TypeVariableIdentifierTypeExpression of Token
         | FunctionTypeExpression of FunctionTypeExpressionSyntax
         | ParenthesizedTypeExpressionSyntax of Token * TypeExpressionSyntax * Token
         | RecordTypeExpression of RecordTypeExpressionSyntax
-        
+        | CapacityTypeExpression of CapacityTypeExpressionSyntax
+        | RefTypeExpression of RefTypeExpressionSyntax
+        | TupleTypeExpression of SeparatedNonEmptySyntaxList<TypeExpressionSyntax>
+        | ClosureTypeExpression of ClosureTypeExpressionSyntax
 
     and IdentifierWithType =
         {
@@ -91,22 +141,28 @@ module Types =
         }
 
     and ClosureOfFunctionSyntax =
-        | ClosureTypeExpression of ClosureTypeExpressionSyntax
-        | ClosureTypeVariable of Token
+        | ClosureTypeExpressionOfFunction of ClosureTypeExpressionSyntax
+        | ClosureTypeVariableOfFunction of Token
+        
+    and TemplateApplicationCapacityExpressionsSyntax =
+        {
+            semicolon: Token
+            capacities: SeparatedNonEmptySyntaxList<CapacityExpressions.CapacityExpressionSyntax>
+        }
+        
+    and TemplateApplicationSyntax =
+        {
+            lessThanSign: Token
+            templateApplicationTypes: SeparatedNonEmptySyntaxList<TypeExpressionSyntax> // TODO could be empty
+            optionalCapacityExpressions: TemplateApplicationCapacityExpressionsSyntax option
+            greaterThanSign: Token
+        }
 
     type IdentifierWithOptionalType =
         {
             identifier: Token
             optionalType: (Token * TypeExpressionSyntax) option
         }
-
-type TemplateApplicationSyntax =
-    {
-        lessThanSign: Token
-        templateApplicationTypes: SeparatedNonEmptySyntaxList<Types.TypeExpressionSyntax>
-        // TODO capacities
-        greaterThanSign: Token
-    }
 
 module Patterns =
         
@@ -120,7 +176,7 @@ module Patterns =
     type ValConPatternSyntax =
         {
             valConDeclarationReference: DeclarationReferenceSyntax
-            optionalTemplateApplication: TemplateApplicationSyntax option
+            optionalTemplateApplication: Types.TemplateApplicationSyntax option
             openParenthesis: Token
             valConArguments: SeparatedSyntaxList<PatternSyntax>
             closeParenthesis: Token
@@ -182,6 +238,14 @@ module Expressions =
             openParenthesis: Token
             functionCallArguments: SeparatedSyntaxList<ExpressionSyntax>
             closeParenthesis: Token
+        }
+
+    and IndexerExpressionSyntax =
+        {
+            expression: ExpressionSyntax
+            openBracket: Token
+            indexExpression: ExpressionSyntax
+            closeBracket: Token
         }
     
     and IfExpressionSyntax =
@@ -260,6 +324,13 @@ module Expressions =
             bodyExpression: ExpressionSyntax
             endKeyword: Token
         }
+        
+    and MemberAccessExpressionSyntax =
+        {
+            expression: ExpressionSyntax
+            dot: Token
+            identifier: Token
+        }
     
     and LambdaExpressionSyntax =
         {
@@ -283,6 +354,20 @@ module Expressions =
             endKeyword: Token
         }
 
+    and ArrayExpressionSyntax =
+        {
+            arrayKeyword: Token
+            arrayTypeExpression: Types.TypeExpressionSyntax
+            optionalInitializerExpression: ArrayInitializerSyntax option
+            endKeyword: Token
+        }
+
+    and ArrayInitializerSyntax =
+        {
+            ofKeyword: Token
+            initializerExpression: ExpressionSyntax
+        }
+
     and SmartPointerSyntax =
         {
             smartPointerKeyword: Token
@@ -291,6 +376,28 @@ module Expressions =
             comma: Token
             destructorExpression: ExpressionSyntax
             closeParenthesis: Token
+        }
+        
+    and TypedExpressionSyntax =
+        {
+            expression: ExpressionSyntax
+            colon: Token
+            typeExpression: Types.TypeExpressionSyntax
+        }
+
+    and FieldAssignSyntax =
+        {
+            fieldNameIdentifier: Token
+            equals: Token
+            expression: ExpressionSyntax
+        }
+
+    and RecordExpressionSyntax =
+        {
+            optionalPackedKeyword: Token option
+            openBrace: Token
+            fieldAssigns: SeparatedNonEmptySyntaxList<FieldAssignSyntax>
+            closeBrace: Token
         }
     
     and ExpressionSyntax =
@@ -305,7 +412,8 @@ module Expressions =
         | TupleExpression of Token * SeparatedNonEmptySyntaxList<ExpressionSyntax> * Token
         | StringLiteralExpressionSyntax of Token
         | CharacterArrayLiteralExpressionSyntax of Token
-        | DeclarationReferenceExpressionSyntax of DeclarationReferenceSyntax * (TemplateApplicationSyntax option)
+        | DeclarationReferenceExpressionSyntax of DeclarationReferenceSyntax * (Types.TemplateApplicationSyntax option)
+        | IndexerExpression of IndexerExpressionSyntax
         | CaseOfExpression of CaseOfExpressionSyntax
         | InlineCppExpressionSyntax of Token
         | FunctionCallExpression of FunctionCallExpressionSyntax
@@ -316,8 +424,12 @@ module Expressions =
         | ForLoopExpression of ForLoopExpressionSyntax
         | DoWhileExpression of DoWhileExpressionSyntax
         | WhileDoExpression of WhileDoExpressionSyntax
+        | MemberAccessExpression of MemberAccessExpressionSyntax
+        | TypedExpression of TypedExpressionSyntax
         | LambdaExpression of LambdaExpressionSyntax
+        | ArrayExpression of ArrayExpressionSyntax
         | SmartPointerExpression of SmartPointerSyntax
+        | RecordExpression of RecordExpressionSyntax
     
     and ArrayAccessLeftAssignSyntax =
         {
@@ -354,10 +466,16 @@ module Declarations =
                 openedModuleNameIdentifiers = moduleNames
                 closeParenthesis = closeParenthesis
             }
+    type TemplateDeclarationCapacityIdentifiersSyntax =
+        {
+            semicolon: Token
+            capacityIdentifiers: SeparatedNonEmptySyntaxList<Token>
+        }
     type TemplateDeclarationSyntax =
         {
             lessThanSign: Token
-            typeVariables: SeparatedNonEmptySyntaxList<Token>
+            typeVariables: SeparatedNonEmptySyntaxList<Token> // TODO: could be empty
+            optionalCapacityIdentifiers: TemplateDeclarationCapacityIdentifiersSyntax option
             greaterThanSign: Token
         }
     type ValueConstructorSyntax =
@@ -400,7 +518,7 @@ module Declarations =
             functionArguments: SeparatedSyntaxList<Types.IdentifierWithOptionalType>
             closeParenthesis: Token
             optionalType: (Token * Types.TypeExpressionSyntax) option
-            // TODO function constraint
+            optionalWhereConstraints: Types.WhereConstraintsSyntax option
             equals: Token
             functionBody: Expressions.ExpressionSyntax
         }

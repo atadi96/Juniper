@@ -33,6 +33,7 @@ module private Lexer =
          | CharacterArrayLiteralTokenData of string
          | IdentifierTokenData of string
          | TypeVariableTokenData of string
+         | NaturalNumberTokenData of uint64
 
     let badToken : FParser<TokenData> =
          fun stream ->
@@ -142,7 +143,10 @@ module private Lexer =
 
             skipChar '!' >>. (skipChar '=' >>% TokenKind BangEqualsToken <|> preturn (TokenKind BangToken))
 
-            skipChar '|' >>. choice [ skipChar '>' >>% TokenKind PipeOperatorToken; skipString "||" >>% TokenKind BitwiseOrToken ]
+            if mode = ExpressionMode then
+                skipChar '|' >>. choice [ skipChar '>' >>% TokenKind PipeOperatorToken; skipString "||" >>% TokenKind BitwiseOrToken; preturn (TokenKind PipeToken) ]
+            else
+                skipChar '|' >>% (TokenKind PipeToken) // in order for expression-only operators to not interfere with closure types
 
             skipChar '<' >>. choice [ skipChar '=' >>% TokenKind LessThanOrEqualToken; skipString "<<" >>% TokenKind BitshiftLeftToken; preturn (TokenKind LessThanToken) ]
 
@@ -169,20 +173,22 @@ module private Lexer =
             
             followedByString "#" >>. (inlineCppToken |> Parse.fatalizeAnyError) |> reportUnterminated "inline C++ code" InlineCppTokenData
             
-            
-            followedBy digit
-                >>. pint64
-                .>>. choice [
-                    skipString "i8" >>% Some Int8Suffix
-                    skipString "i16" >>% Some Int16Suffix
-                    skipString "i32" >>% Some Int32Suffix
-                    skipString "i64" >>% Some Int64Suffix
-                    skipString "u8" >>% Some UInt8Suffix
-                    skipString "u16" >>% Some UInt16Suffix
-                    skipString "u32" >>% Some UInt32Suffix
-                    skipString "u64" >>% Some UInt64Suffix
-                    preturn None
-                ] |>> IntLiteralTokenData
+            if mode = ExpressionMode then
+                followedBy digit
+                    >>. pint64
+                    .>>. choice [
+                        skipString "i8" >>% Some Int8Suffix
+                        skipString "i16" >>% Some Int16Suffix
+                        skipString "i32" >>% Some Int32Suffix
+                        skipString "i64" >>% Some Int64Suffix
+                        skipString "u8" >>% Some UInt8Suffix
+                        skipString "u16" >>% Some UInt16Suffix
+                        skipString "u32" >>% Some UInt32Suffix
+                        skipString "u64" >>% Some UInt64Suffix
+                        preturn None
+                    ] |>> IntLiteralTokenData
+            else
+                followedBy digit >>. puint64 |>> NaturalNumberTokenData
             
             followedBy (asciiLetter <|> pchar '_') >>. Parse.id |>> getKeywordOrIdentifierTokenData
 
@@ -204,6 +210,8 @@ module private Lexer =
                 | Some UInt64Suffix -> "i64"
                 | None -> ""
             IntLiteralToken, (sprintf "%i%s" i suffixText), Some (IntValue (i,suffix))
+        | NaturalNumberTokenData n ->
+            NaturalNumberToken, (sprintf "%i" n), (Some (NaturalValue n))
         | IdentifierTokenData identifierText -> IdentifierToken, identifierText, None
         | BaseTypeKeywordData (keyword, baseType) ->
             KeywordToken keyword, (SyntaxFacts.keywordText keyword), Some (BaseTypeValue baseType)
@@ -261,7 +269,8 @@ module private Lexer =
             | CharacterArrayLiteralToken
             | StringLiteralToken
             | InlineCppToken
-            | IntLiteralToken -> failwith "already handled"
+            | IntLiteralToken
+            | NaturalNumberToken-> failwith "already handled"
     let token mode : FParser<Token> =
         pipe5
             parseLeadingTrivia
