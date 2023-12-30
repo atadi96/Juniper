@@ -258,6 +258,10 @@ module rec Types =
         }
 
     let parseTemplateApplication : Parser<Types.TemplateApplicationSyntax> =
+        let endTypeVariables = function
+            | SemicolonToken
+            | GreaterThanToken -> true
+            | _ -> false
         let parseTemplateApplicationCapacityExpressions =
             lexerMode TypeMode (par {
                 let! semicolon = matchToken SemicolonToken
@@ -269,7 +273,7 @@ module rec Types =
             })
         lexerMode TypeMode (par {
             let! lessThan = matchToken LessThanToken
-            let! templateApplicationTypes = many1Sep Types.parseTypeExpression CommaToken
+            let! templateApplicationTypes = manySep' Types.parseTypeExpression CommaToken endTypeVariables
             let! optionalCapacities =
                 parseTemplateApplicationCapacityExpressions
                 |> ifCurrentKind SemicolonToken
@@ -567,6 +571,7 @@ module rec Expressions =
         | IndexerLeftRecursion of (Token * ExpressionSyntax * Token)
         | MemberAccessLeftRecursion of (Token * Token)
         | TypeLeftRecursion of (Token * Types.TypeExpressionSyntax)
+        | UnsafeTypeCastLeftRecursion of (Token * Types.TypeExpressionSyntax)
 
     let parseExpression : Parser<ExpressionSyntax> =
         par {
@@ -594,7 +599,11 @@ module rec Expressions =
                     pipe2
                         nextToken
                         (parseBinaryExpression unaryOperatorPrecedence)
-                        (fun operator operand -> UnaryExpressionSyntax (operator, operand))
+                        (fun operator operand ->
+                            match operator.tokenKind with
+                            | KeywordToken RefKeyword -> RefExpression (operator, operand)
+                            | _ -> UnaryExpressionSyntax (operator, operand)
+                        )
                 else
                     parsePrimaryExpression
             return! binaryRight left
@@ -640,6 +649,13 @@ module rec Expressions =
                         let leftRecursion = TypeLeftRecursion (colon, typeExpression)
                         return Some leftRecursion
                         
+                    })
+                | ColonColonColonColonToken ->
+                    return! lexerMode TypeMode (par {
+                        let! colonColonColonColon = nextToken
+                        let! typeExpression = Types.parseTypeExpression
+                        let leftRecursion = UnsafeTypeCastLeftRecursion (colonColonColonColon, typeExpression)
+                        return Some leftRecursion
                     })
                 | _ ->
                     return None
@@ -874,13 +890,15 @@ module rec Expressions =
                         optionalInitializerExpression = None
                         endKeyword = endKeyword
                     }
-            (*
             | OpenBracketToken ->
                 let! openBracket = nextToken
-                let! listElements = many1Sep parseExpression CommaToken
+                let! elementExpressions = manySep parseExpression CommaToken CloseBracketToken
                 let! closeBracket = matchToken CloseBracketToken
-                return ??? // is in the ebnf file but not in the original parser..?
-            *)
+                return ArrayLiteralExpression {
+                    openBracket = openBracket
+                    elementExpressions = elementExpressions
+                    closeBracket = closeBracket
+                }
             | KeywordToken SmartPointerKeyword ->
                 let! smartPointerKeyword = nextToken
                 let! openParenthesis = matchToken OpenParenthesisToken
@@ -945,6 +963,12 @@ module rec Expressions =
                             TypedExpression {
                                 expression = foldingExpression
                                 colon = colon
+                                typeExpression = typeExpression
+                            }
+                        | UnsafeTypeCastLeftRecursion (colonColonColonColon, typeExpression) ->
+                            UnsafeTypeCast {
+                                expression = foldingExpression
+                                colonColonColonColon = colonColonColonColon
                                 typeExpression = typeExpression
                             }
                     ) expression
@@ -1069,6 +1093,10 @@ module Declarations =
             OpenModulesSyntax.Create
 
     let private parseTemplateDec : Parser<TemplateDeclarationSyntax> =
+        let closeTypeVariables = function
+            | SemicolonToken
+            | GreaterThanToken -> true
+            | _ -> false
         let parseTypeVariableIdentifier =
             par {
                 match! currentKind with
@@ -1090,7 +1118,7 @@ module Declarations =
             })
         lexerMode TypeMode (par {
             let! lessThan = matchToken LessThanToken
-            let! typeVariables = many1Sep parseTypeVariableIdentifier CommaToken
+            let! typeVariables = manySep' parseTypeVariableIdentifier CommaToken closeTypeVariables
             let! optionalCapacityIdentifiers =
                 parseCapacityIdentifiers
                 |> ifCurrentKind SemicolonToken
@@ -1213,6 +1241,21 @@ module Declarations =
             }
         }
 
+    let private parseIncludeDeclaration : Parser<IncludeDeclarationSyntax> =
+        par {
+            let! includeKeyword = matchToken (KeywordToken IncludeKeyword)
+            let! openParenthesis = matchToken OpenParenthesisToken
+            let! cppFileNames =
+                manySep (matchToken StringLiteralToken) CommaToken CloseParenthesisToken
+            let! closeParenthesis = matchToken CloseParenthesisToken
+            return {
+                includeKeyword = includeKeyword
+                openParenthesis = openParenthesis
+                cppFileNames = cppFileNames
+                closeParenthesis = closeParenthesis
+            }
+        }
+
     let rec parseDeclaration : Parser<DeclarationSyntax> =
         let isDeclarationStart tokenKind =
             match tokenKind with
@@ -1221,7 +1264,8 @@ module Declarations =
             | KeywordToken TypeKeyword
             | KeywordToken AliasKeyword
             | KeywordToken FunKeyword
-            | InlineCppToken -> true
+            | InlineCppToken
+            | KeywordToken IncludeKeyword -> true
             | _ -> false
 
         par {
@@ -1244,6 +1288,9 @@ module Declarations =
             | InlineCppToken ->
                 let! inlineCpp = nextToken
                 return InlineCppDeclarationSyntax inlineCpp
+            | KeywordToken IncludeKeyword ->
+                let! includeDeclaration = parseIncludeDeclaration
+                return IncludeDeclarationSyntax includeDeclaration
             | _ ->
                 // token is not recognized as top level declaration: skip to the next possible declaration
                 // give a syntax error

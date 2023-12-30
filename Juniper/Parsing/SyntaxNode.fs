@@ -12,6 +12,7 @@ type NodeKind =
     | LetDeclarationKind
     | AliasKind
     | InlineCppDeclarationKind
+    | IncludeDeclarationKind
     | TemplateDeclarationKind
     | TemplateDeclarationCapacityIdentifiersKind
     | TemplateApplicationKind
@@ -49,6 +50,9 @@ type NodeKind =
     | LambdaExpressionKind
     | CaseOfExpressionKind
     | CaseClauseKind
+    | RefExpressionKind
+    | ArrayLiteralExpressionKind
+    | UnsafeTypeCastKind
     | VariablePatternKind
     | ValConPatternKind
     | ClosureTypeVariableKind
@@ -329,6 +333,14 @@ type SyntaxNode =
         SyntaxNode.fromChildren (ModuleDefinitionKind) [ yield SyntaxNode.From this.moduleName; yield! this.declarations |> Seq.map SyntaxNode.From ]
     static member From(this: ModuleNameSyntax) =
         SyntaxNode.fromChildren ModuleNameKind [ SyntaxNode.From this.moduleKeyword; SyntaxNode.From this.moduleNameIdentifier ]
+    static member From(this: IncludeDeclarationSyntax) =
+        SyntaxNode.fromChildren
+            IncludeDeclarationKind
+            [ SyntaxNode.From this.includeKeyword
+              SyntaxNode.From this.openParenthesis
+              yield! this.cppFileNames |> SyntaxNode.FromList SyntaxNode.From
+              SyntaxNode.From this.closeParenthesis
+            ]
     static member From(this: DeclarationSyntax) =
         match this with
         | OpenModulesDeclarationSyntax openModulesSyntax -> openModulesSyntax |> SyntaxNode.From
@@ -338,6 +350,8 @@ type SyntaxNode =
         | AliasSyntax aliasSyntax -> aliasSyntax |> SyntaxNode.From
         | InlineCppDeclarationSyntax token ->
             SyntaxNode.fromChildren InlineCppDeclarationKind [SyntaxNode.From token]
+        | IncludeDeclarationSyntax includeDeclarationSyntax ->
+            SyntaxNode.From includeDeclarationSyntax
     static member From(this: OpenModulesSyntax) =
         SyntaxNode.fromChildren OpenModulesKind
             [ this.openKeyword |> SyntaxNode.From
@@ -353,7 +367,7 @@ type SyntaxNode =
     static member From(this: TemplateDeclarationSyntax) =
         SyntaxNode.fromChildren TemplateDeclarationKind
             [ SyntaxNode.From this.lessThanSign
-              yield! this.typeVariables |> SyntaxNode.FromNonEmptyList SyntaxNode.From
+              yield! this.typeVariables |> SyntaxNode.FromList SyntaxNode.From
               yield! this.optionalCapacityIdentifiers |> SyntaxNode.FromOption SyntaxNode.From
               SyntaxNode.From this.greaterThanSign
             ]
@@ -384,7 +398,7 @@ type SyntaxNode =
         SyntaxNode.fromChildren
             TemplateApplicationKind
             [ SyntaxNode.From this.lessThanSign
-              yield! this.templateApplicationTypes |> SyntaxNode.FromNonEmptyList SyntaxNode.From
+              yield! this.templateApplicationTypes |> SyntaxNode.FromList SyntaxNode.From
               yield! this.optionalCapacityExpressions |> SyntaxNode.FromOption SyntaxNode.From
               SyntaxNode.From this.greaterThanSign
             ]
@@ -691,6 +705,20 @@ type SyntaxNode =
               yield! this.fieldAssigns |> SyntaxNode.FromNonEmptyList SyntaxNode.From
               SyntaxNode.From this.closeBrace
             ]
+    static member From(this: ArrayLiteralExpressionSyntax) =
+        SyntaxNode.fromChildren
+            ArrayLiteralExpressionKind
+            [ SyntaxNode.From this.openBracket
+              yield! this.elementExpressions |> SyntaxNode.FromList SyntaxNode.From
+              SyntaxNode.From this.closeBracket
+            ]
+    static member From(this: UnsafeTypeCastExpression) =
+        SyntaxNode.fromChildren
+            UnsafeTypeCastKind
+            [ SyntaxNode.From this.expression
+              SyntaxNode.From this.colonColonColonColon
+              SyntaxNode.From this.typeExpression
+            ]
     static member From(this: ExpressionSyntax): ISyntaxNode =
         match this with
         | UnitLiteralExpression (openParenthesis, closeParenthesis) ->
@@ -814,6 +842,16 @@ type SyntaxNode =
                 [ SyntaxNode.From openParenthesis
                   yield! elements |> SyntaxNode.FromNonEmptyList SyntaxNode.From
                   SyntaxNode.From closeParenthesis]
+        | RefExpression (refKeyword, refExpression) ->
+            SyntaxNode.fromChildren
+                RefExpressionKind
+                [ SyntaxNode.From refKeyword
+                  SyntaxNode.From refExpression
+                ]
+        | ArrayLiteralExpression arrayLiteralExpressionSyntax ->
+            SyntaxNode.From arrayLiteralExpressionSyntax
+        | UnsafeTypeCast unsafeTypeCastExpression ->
+            SyntaxNode.From unsafeTypeCastExpression
     static member From(this: ArrayAccessLeftAssignSyntax) =
         SyntaxNode.fromChildren
             ArrayAccessLeftAssignKind

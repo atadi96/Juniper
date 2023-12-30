@@ -46,6 +46,7 @@ type Keyword =
     | TypeKeyword
     | AliasKeyword
     | FunKeyword
+    | IncludeKeyword
     | UInt8Keyword
     | UInt16Keyword
     | UInt32Keyword
@@ -125,6 +126,7 @@ type TokenKind =
     | OpenBracketToken
     | CloseBracketToken
     | ColonToken
+    | ColonColonColonColonToken
     | SemicolonToken
     | InlineCppToken
     | ArrowToken

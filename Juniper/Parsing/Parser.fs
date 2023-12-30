@@ -182,8 +182,7 @@ let many (item: Parser<_ option>): Parser<_ list> =
 
     manyInner
         
-            
-let manySep (item: Parser<_>) (sepToken) (closeToken): Parser<SeparatedSyntaxList<_>> =
+let manySep' (item: Parser<_>) (sepToken) (closeTokenPred): Parser<SeparatedSyntaxList<_>> =
     let rec nextItemParser (lexer: Lexer,parserState : ParserState) = 
         sepItemParser (lexer,parserState)
     and sepItemParser =
@@ -199,13 +198,15 @@ let manySep (item: Parser<_>) (sepToken) (closeToken): Parser<SeparatedSyntaxLis
         }
     par {
         let! currentTokenKind = currentKind
-        if currentTokenKind = closeToken then
+        if closeTokenPred currentTokenKind then
             return EmptySyntaxList
         else
             let! firstItem = item
             let! sepItems = nextItemParser
             return SeparatedSyntaxList (firstItem, sepItems)
     }
+            
+let manySep (item: Parser<_>) (sepToken) (closeToken: TokenKind): Parser<SeparatedSyntaxList<_>> = manySep' item sepToken ((=) closeToken)
         
 let many1Sep (item: Parser<_>) (sepToken): Parser<SeparatedNonEmptySyntaxList<_>> =
     let rec nextItemParser (lexer: Lexer,parserState : ParserState) = 

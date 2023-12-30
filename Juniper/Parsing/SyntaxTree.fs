@@ -153,7 +153,7 @@ module Types =
     and TemplateApplicationSyntax =
         {
             lessThanSign: Token
-            templateApplicationTypes: SeparatedNonEmptySyntaxList<TypeExpressionSyntax> // TODO could be empty
+            templateApplicationTypes: SeparatedSyntaxList<TypeExpressionSyntax> // TODO could be empty
             optionalCapacityExpressions: TemplateApplicationCapacityExpressionsSyntax option
             greaterThanSign: Token
         }
@@ -399,6 +399,20 @@ module Expressions =
             fieldAssigns: SeparatedNonEmptySyntaxList<FieldAssignSyntax>
             closeBrace: Token
         }
+
+    and ArrayLiteralExpressionSyntax =
+        {
+            openBracket: Token
+            elementExpressions: SeparatedSyntaxList<ExpressionSyntax>
+            closeBracket: Token
+        }
+
+    and UnsafeTypeCastExpression =
+        {
+            expression: ExpressionSyntax
+            colonColonColonColon: Token
+            typeExpression: Types.TypeExpressionSyntax
+        }
     
     and ExpressionSyntax =
         | UnitLiteralExpression of Token * Token
@@ -430,6 +444,9 @@ module Expressions =
         | ArrayExpression of ArrayExpressionSyntax
         | SmartPointerExpression of SmartPointerSyntax
         | RecordExpression of RecordExpressionSyntax
+        | RefExpression of Token * ExpressionSyntax
+        | ArrayLiteralExpression of ArrayLiteralExpressionSyntax
+        | UnsafeTypeCast of UnsafeTypeCastExpression
     
     and ArrayAccessLeftAssignSyntax =
         {
@@ -474,7 +491,7 @@ module Declarations =
     type TemplateDeclarationSyntax =
         {
             lessThanSign: Token
-            typeVariables: SeparatedNonEmptySyntaxList<Token> // TODO: could be empty
+            typeVariables: SeparatedSyntaxList<Token>
             optionalCapacityIdentifiers: TemplateDeclarationCapacityIdentifiersSyntax option
             greaterThanSign: Token
         }
@@ -522,6 +539,13 @@ module Declarations =
             equals: Token
             functionBody: Expressions.ExpressionSyntax
         }
+    type IncludeDeclarationSyntax =
+        {
+            includeKeyword: Token
+            openParenthesis: Token
+            cppFileNames: SeparatedSyntaxList<Token>
+            closeParenthesis: Token
+        }
     
     type DeclarationSyntax =
         | OpenModulesDeclarationSyntax of OpenModulesSyntax
@@ -530,6 +554,7 @@ module Declarations =
         | LetDeclarationSyntax of LetDeclarationSyntax
         | AliasSyntax of AliasSyntax
         | InlineCppDeclarationSyntax of Token
+        | IncludeDeclarationSyntax of IncludeDeclarationSyntax
 
 module Modules =
     type ModuleDefinitionSyntax =

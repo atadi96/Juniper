@@ -6,6 +6,7 @@ open Tokens
 let getUnaryOperatorPrecedence (tokenKind: TokenKind) =
     match tokenKind with
     | MinusToken
+    | KeywordToken RefKeyword
     | KeywordToken NotKeyword
     | BitwiseNotToken
     | BangToken -> 12
@@ -54,6 +55,7 @@ let getKeyword (text: string) =
     | "alias" -> Some AliasKeyword
     | "type" -> Some TypeKeyword
     | "fun" -> Some FunKeyword
+    | "include" -> Some IncludeKeyword
     | "uint8" -> Some UInt8Keyword
     | "uint16" -> Some UInt16Keyword
     | "uint32" -> Some UInt32Keyword
@@ -110,7 +112,8 @@ let keywordText (keyword: Keyword) =
     | LetKeyword -> "let"
     | AliasKeyword -> "alias"
     | TypeKeyword -> "type"
-    | FunKeyword -> "fun" 
+    | FunKeyword -> "fun"
+    | IncludeKeyword -> "include"
     | UInt8Keyword -> "uint8"
     | UInt16Keyword -> "uint16"
     | UInt32Keyword -> "uint32"

@@ -34,6 +34,7 @@ token "#" HashToken;
 token "'" SingleQuote;
 token "\" DoubleQuote;
 token "_" Underscore;
+token "::::" ColonColonColonColon
 
 <module>            ::= Module "module" <moduleName: id> [<declaration> {"," <declaration>}];
 <declaration>       ::= Open <open>
@@ -41,10 +42,11 @@ token "_" Underscore;
                      |  Function <function>
                      |  Let <let>
                      |  Alias <alias>
-                     |  InlineCpp "#" <inline-cpp> "#";
+                     |  InlineCpp "#" <inline-cpp> "#"
+                     |  Include "include" "(" ["\" <extended-ascii-string> "\" { "," "\" <extended-ascii-string> "\" }] ")" ;
 <open>              ::= OpenModules "open" "(" [<id> {"," <id>}] ")";
 <template-declaration>      ::= TemplateDeclaration "<" ["'" <id> {"," "'" <id>}] [";" <id> {"," <id>}] ">";
-<template-application>    ::= TemplateApply <type-expression> {"," <type-expression>} [";" <capacity-expression> {"," <capacity-expression>}];
+<template-application>    ::= TemplateApply [<type-expression> {"," <type-expression>}] [";" <capacity-expression> {"," <capacity-expression>}];
 <algebraic-type>    ::= AlgebraicTypeDeclaration "type" <id> [<template-declaration>] "=" <value-constructor> {"|" <value-constructor>};
 <alias>             ::= AliasDeclaration "alias" <id> [<template-declaration>] "=" <type-expression>;
 <value-constructor> ::= ValueConstructor <id> "(" [<type-expression> {"," <type-expression>}] ")";
@@ -100,7 +102,7 @@ token "_" Underscore;
                      |  Lambda "fn" "(" [<lambdaArgument: identifier-with-optional-type> {"," <identifier-with-optional-type>}] ")" [":" <type-expression>] "->" <expression> "end"
                      |  CaseOf "case" <expression> "of" "|" <case-clause> {"|" <case-clause>} "end"
                      |  Record ["packed"] "{" [<field-assign-list>] "}"
-                     |  List "[" <expr-list> "]"
+                     |  ArrayLiteral "[" [<expression> [{"," <expression>}]] "]"
                      |  Ref "ref" <expression>
                      |  Deref "!" <expression>
                      |  ArrayOf "array" <type-expression> "of" <expression> "end"

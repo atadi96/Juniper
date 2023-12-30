@@ -157,7 +157,7 @@ module private Lexer =
             skipChar '[' >>% TokenKind OpenBracketToken
             skipChar ']' >>% TokenKind CloseBracketToken
 
-            skipChar ':' >>% TokenKind ColonToken
+            skipChar ':' >>. choice [ skipString ":::" >>% TokenKind ColonColonColonColonToken; preturn (TokenKind ColonToken) ]
 
             skipChar ';' >>% TokenKind SemicolonToken
             skipString "&&&" >>% TokenKind BitwiseAndToken
@@ -235,6 +235,7 @@ module private Lexer =
             | CommaToken -> k, ",", None
             | EqualsToken -> k, "=", None
             | ColonToken -> k, ":", None
+            | ColonColonColonColonToken -> k, "::::", None
             | KeywordToken keyword ->
                 match keyword with
                 | TrueKeyword -> k, (SyntaxFacts.keywordText keyword), Some (BoolValue true)
