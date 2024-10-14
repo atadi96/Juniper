@@ -421,6 +421,8 @@ module Patterns =
                 return! nextToken |> map FalsePattern
             | IntLiteralToken ->
                 return! nextToken |> map IntegerPattern
+            | DoubleLiteralToken ->
+                return! nextToken |> map FloatPattern
             | IdentifierToken ->
                 let! firstIdentifier = nextToken
                 let! currentToken = current
@@ -669,7 +671,9 @@ module rec Expressions =
                 return! nextToken |> map BoolLiteralExpression
             | KeywordToken NullKeyword ->
                 return! nextToken |> map NullLiteralExpression
-            | IntLiteralToken ->
+            | IntLiteralToken
+            | FloatLiteralToken
+            | DoubleLiteralToken ->
                 return! nextToken |> map NumberExpressionSyntax
             | StringLiteralToken ->
                 return! nextToken |> map StringLiteralExpressionSyntax

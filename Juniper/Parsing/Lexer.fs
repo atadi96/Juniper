@@ -23,9 +23,12 @@ type LexerMode =
     | TypeMode
 
 module private Lexer =
+    type FloatSuffix = FloatSuffix
+
     type TokenData =
          | TokenKind of TokenKind
          | IntLiteralTokenData of int64 * IntSuffix option
+         | FloatingLiteralTokenData of string * double * FloatSuffix option
          | BadTokenData of char
          | BaseTypeKeywordData of Keyword * Ast.BaseTypes
          | InlineCppTokenData of string
@@ -48,6 +51,77 @@ module private Lexer =
         let normalCharSnippet = manySatisfy (fun c -> c <> '\\' && c <> '#')
         let escapedChar = pstring "\\" >>. (anyOf "\\#" |>> string)
         between (pstring "#") (pstring "#") ((stringsSepBy normalCharSnippet escapedChar))
+
+    let num : FParser<TokenData> =
+        let afterIntParser : FParser<_> =
+            choice [
+                skipString "i8" >>% Choice1Of2 (Some Int8Suffix)
+                skipString "i16" >>% Choice1Of2 (Some Int16Suffix)
+                skipString "i32" >>% Choice1Of2 (Some Int32Suffix)
+                skipString "i64" >>% Choice1Of2 (Some Int64Suffix)
+                skipString "u8" >>% Choice1Of2 (Some UInt8Suffix)
+                skipString "u16" >>% Choice1Of2 (Some UInt16Suffix)
+                skipString "u32" >>% Choice1Of2 (Some UInt32Suffix)
+                skipString "u64" >>% Choice1Of2 (Some UInt64Suffix)
+                skipString "f" >>% Choice2Of2 FloatSuffix
+                preturn (Choice1Of2 None)
+            ]
+        numberLiteral NumberLiteralOptions.DefaultFloat "integer or floating-point number"
+        >>= (fun num ->
+            let getFloatingNumber() =
+                try
+                    if num.IsDecimal then
+                        System.Double.Parse(num.String, System.Globalization.CultureInfo.InvariantCulture)
+                    elif num.IsHexadecimal then
+                        floatOfHexString num.String
+                    elif num.IsInfinity then
+                        if num.HasMinusSign then System.Double.NegativeInfinity else System.Double.PositiveInfinity
+                    else
+                        System.Double.NaN
+                with
+                | :? System.OverflowException ->
+                    if num.HasMinusSign then System.Double.NegativeInfinity else System.Double.PositiveInfinity
+            let floatResult suffix = FloatingLiteralTokenData (num.String, getFloatingNumber(), suffix)
+            if num.IsInteger then
+                afterIntParser
+                |>> function
+                    | Choice1Of2 intSuffix ->
+                        IntLiteralTokenData (System.Int64.Parse num.String, intSuffix)
+                    | Choice2Of2 FloatSuffix ->
+                        floatResult (Some FloatSuffix)
+            else
+                ((skipChar 'f' >>% Some FloatSuffix) <|> preturn None) |>> floatResult
+        )
+
+    let floatNumber : FParser<string * double> =
+        fun stream ->
+            let reply = numberLiteralE NumberLiteralOptions.DefaultFloat (expected "floating-point number") stream
+            if reply.Status = Ok then
+                let result = reply.Result
+                let createReply x = Reply((result.String, x))
+                if result.IsInteger then
+                    stream.Skip(-result.String.Length)
+                    Reply(Error, expected "floating-point number with decimal")
+                else
+                    try
+                        let d =
+                            if result.IsDecimal then
+                                System.Double.Parse(result.String, System.Globalization.CultureInfo.InvariantCulture)
+                            elif result.IsHexadecimal then
+                                floatOfHexString result.String
+                            elif result.IsInfinity then
+                                if result.HasMinusSign then System.Double.NegativeInfinity else System.Double.PositiveInfinity
+                            else
+                                System.Double.NaN
+                        createReply d
+                    with
+                    | :? System.OverflowException ->
+                        createReply(if result.HasMinusSign then System.Double.NegativeInfinity else System.Double.PositiveInfinity)
+                    | :? System.FormatException ->
+                        stream.Skip(-result.String.Length)
+                        Reply(FatalError, messageError "The floating-point number has an invalid format (this error is unexpected, please report this error message to fparsec@quanttec.com).")
+            else
+                Reply(reply.Status, reply.Error)
 
     let private reportUnterminated name ctor (p: FParser<_>): FParser<_> =
         fun stream ->
@@ -121,6 +195,29 @@ module private Lexer =
         )
         |> Option.defaultValue (IdentifierTokenData text)
 
+    let intParser : FParser<TokenData> =
+        pint64
+        .>>. choice [
+            skipString "i8" >>% Some Int8Suffix
+            skipString "i16" >>% Some Int16Suffix
+            skipString "i32" >>% Some Int32Suffix
+            skipString "i64" >>% Some Int64Suffix
+            skipString "u8" >>% Some UInt8Suffix
+            skipString "u16" >>% Some UInt16Suffix
+            skipString "u32" >>% Some UInt32Suffix
+            skipString "u64" >>% Some UInt64Suffix
+            preturn None
+        ] |>> IntLiteralTokenData
+
+    let floatParser : FParser<TokenData> =
+        pipe2
+            floatNumber
+            (choice [
+                skipChar 'f' >>% Some FloatSuffix
+                preturn None
+            ])
+            (fun (text, num) suffix -> FloatingLiteralTokenData (text, num, suffix))
+
     let tokenData mode : FParser<TokenData> =
         choice
           [
@@ -174,19 +271,7 @@ module private Lexer =
             followedByString "#" >>. (inlineCppToken |> Parse.fatalizeAnyError) |> reportUnterminated "inline C++ code" InlineCppTokenData
             
             if mode = ExpressionMode then
-                followedBy digit
-                    >>. pint64
-                    .>>. choice [
-                        skipString "i8" >>% Some Int8Suffix
-                        skipString "i16" >>% Some Int16Suffix
-                        skipString "i32" >>% Some Int32Suffix
-                        skipString "i64" >>% Some Int64Suffix
-                        skipString "u8" >>% Some UInt8Suffix
-                        skipString "u16" >>% Some UInt16Suffix
-                        skipString "u32" >>% Some UInt32Suffix
-                        skipString "u64" >>% Some UInt64Suffix
-                        preturn None
-                    ] |>> IntLiteralTokenData
+                followedBy digit >>. num
             else
                 followedBy digit >>. puint64 |>> NaturalNumberTokenData
             
@@ -210,6 +295,10 @@ module private Lexer =
                 | Some UInt64Suffix -> "i64"
                 | None -> ""
             IntLiteralToken, (sprintf "%i%s" i suffixText), Some (IntValue (i,suffix))
+        | FloatingLiteralTokenData (text, f, Some FloatSuffix) ->
+            FloatLiteralToken, sprintf "%s%s" text "f", Some (FloatValue f)
+        | FloatingLiteralTokenData (text, f, None) ->
+            DoubleLiteralToken, text, Some (DoubleValue f)
         | NaturalNumberTokenData n ->
             NaturalNumberToken, (sprintf "%i" n), (Some (NaturalValue n))
         | IdentifierTokenData identifierText -> IdentifierToken, identifierText, None
@@ -313,7 +402,7 @@ type Lexer(streamName: string, text: string) =
         let reply = token mode stream
         if reply.Status = Ok then
             reply.Result
-        else failwithf "lexing a token should never fail - '%c' %A" (stream.Peek()) (stream.Position)
+        else failwithf "lexing a token should never fail - '%c' %A\n%A" (stream.Peek()) (stream.Position) (reply.Error)
 
     member __.GetErrors() =
         stream.UserState.parserErrors |> List.rev |> List.map (fun (a,_,_) -> a)

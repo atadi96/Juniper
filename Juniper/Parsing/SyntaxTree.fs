@@ -214,6 +214,7 @@ module Patterns =
         | ParenthesizedPattern of ParenthesizedPatternSyntax
         | VariablePattern of VariablePatternSyntax
         | IntegerPattern of Token
+        | FloatPattern of Token
         | TruePattern of Token
         | FalsePattern of Token
         | UnderscorePattern of Token

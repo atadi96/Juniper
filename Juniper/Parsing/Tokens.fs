@@ -33,6 +33,8 @@ type IntSuffix =
 type TokenValue =
     | TextValue of string
     | IntValue of int64 * IntSuffix option
+    | DoubleValue of double
+    | FloatValue of double
     | BaseTypeValue of Ast.BaseTypes
     | TypeVariableIdentifierValue of string
     | InlineCppCodeValue of string
@@ -135,6 +137,8 @@ type TokenKind =
     | CharacterArrayLiteralToken
     | CommaToken
     | IntLiteralToken
+    | FloatLiteralToken
+    | DoubleLiteralToken
     | IdentifierToken
     | TypeVariableIdentifierToken
     | DotToken

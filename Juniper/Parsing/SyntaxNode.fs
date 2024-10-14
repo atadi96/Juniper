@@ -87,6 +87,7 @@ type NodeKind =
     | RecordMemberLeftAssignKind
     | DeclarationReferenceLeftAssignKind
     | IntegerPatternKind
+    | FloatPatternKind
     | TruePatternKind
     | FalsePatternKind
     | UnderscorePatternKind
@@ -175,6 +176,8 @@ type SyntaxNode =
                     | ArrowToken -> System.ConsoleColor.Blue
                     | IdentifierToken -> System.ConsoleColor.Yellow
                     | IntLiteralToken
+                    | FloatLiteralToken
+                    | DoubleLiteralToken
                     | StringLiteralToken -> System.ConsoleColor.DarkYellow
                     | TypeVariableIdentifierToken -> System.ConsoleColor.Green
                     | InlineCppToken -> System.ConsoleColor.DarkBlue
@@ -931,6 +934,8 @@ type SyntaxNode =
             SyntaxNode.From variablePatternSyntax
         | IntegerPattern token ->
             SyntaxNode.fromChildren IntegerPatternKind [SyntaxNode.From token]
+        | FloatPattern token ->
+            SyntaxNode.fromChildren FloatPatternKind [SyntaxNode.From token]
         | TruePattern token ->
             SyntaxNode.fromChildren TruePatternKind [SyntaxNode.From token]
         | FalsePattern token ->
